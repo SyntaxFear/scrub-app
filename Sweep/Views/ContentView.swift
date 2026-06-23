@@ -37,6 +37,8 @@ struct ContentView: View {
             }
         }
         .searchable(text: $store.searchText, prompt: store.mode == .apps ? "Search apps" : "Search leftovers")
+        .toolbarBackground(.visible, for: .windowToolbar)
+        .background(WindowAccessor())
         .onChange(of: store.mode) { _, newValue in
             if newValue == .leftovers { store.enterLeftoversMode() }
         }
@@ -79,14 +81,28 @@ struct ContentView: View {
     }
 }
 
-/// Translucent overlay shown while an app bundle is dragged over the window.
+/// Forces the window opaque so the content reads as solid, not translucent.
+private struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
+            window.titlebarAppearsTransparent = false
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Solid overlay shown while an app bundle is dragged over the window.
 private struct DropOverlay: View {
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.thinMaterial)
+            Color(nsColor: .windowBackgroundColor).opacity(0.94)
             VStack(spacing: 12) {
-                Image(systemName: "arrow.down.app.dashed")
+                Image(systemName: "arrow.down.app")
                     .font(.system(size: 46, weight: .light))
                 Text("Drop an app to uninstall it")
                     .font(.title3.weight(.medium))

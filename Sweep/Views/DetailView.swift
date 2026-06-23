@@ -31,6 +31,7 @@ struct DetailView: View {
             Divider()
             ItemsTable()
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .safeAreaInset(edge: .bottom, spacing: 0) { RemovalFooter() }
     }
 }
@@ -146,5 +147,6 @@ private struct ItemsTable: View {
             }
             .width(min: 64, ideal: 80, max: 110)
         }
+        .scrollContentBackground(.hidden)
     }
 }

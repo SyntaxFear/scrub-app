@@ -13,6 +13,7 @@ struct SidebarView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Apps
@@ -33,6 +34,7 @@ struct SidebarView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
             .onChange(of: store.selectedAppID) { _, newValue in
                 store.selectApp(newValue)
             }
@@ -63,6 +65,7 @@ struct SidebarView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
             .onChange(of: store.selectedOrphanID) { _, newValue in
                 store.selectOrphan(newValue)
             }

@@ -23,7 +23,13 @@ struct FullDiskAccessBanner: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
-        .background(.yellow.opacity(0.12))
+        .background {
+            // Opaque base + faint warm tint = solid, not translucent.
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                Color.orange.opacity(0.10)
+            }
+        }
         .overlay(alignment: .bottom) { Divider() }
     }
 }
