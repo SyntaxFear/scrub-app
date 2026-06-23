@@ -1,0 +1,15 @@
+# Build output
+build/
+DerivedData/
+*.xcuserstate
+
+# Xcode user data
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Brainstorm companion artifacts
+.superpowers/
+
+# macOS
+.DS_Store
