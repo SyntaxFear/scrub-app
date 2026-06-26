@@ -6,22 +6,20 @@ struct RemovalFooter: View {
     @Environment(AppStore.self) private var store
 
     private var selectedCount: Int { store.selectedItems.count }
-    private var allSelected: Bool {
-        !store.detailItems.isEmpty && selectedCount == store.detailItems.count
-    }
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(allSelected ? "Deselect All" : "Select All") {
-                if allSelected { store.deselectAllItems() } else { store.selectAllItems() }
-            }
-            .buttonStyle(.link)
-            .disabled(store.detailItems.isEmpty)
-
             Text("\(selectedCount) of \(store.detailItems.count) selected  ·  \(Format.size(store.selectedTotalSize))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+
+            if store.isSizingDetail {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text("calculating…").font(.caption).foregroundStyle(.tertiary)
+                }
+            }
 
             Spacer()
 

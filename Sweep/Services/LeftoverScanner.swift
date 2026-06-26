@@ -2,8 +2,8 @@ import Foundation
 
 /// Given one installed app, finds every related support file across the standard
 /// macOS storage locations. Matches by bundle identifier (`.exact`) and, for
-/// folders that are named after the app rather than its identifier, by display
-/// name (`.likely`).
+/// folders that are named after the app or its developer rather than its
+/// identifier, by display name or Team ID (`.likely`).
 enum LeftoverScanner {
 
     /// Returns the app's own bundle plus all discovered support files, sorted
@@ -22,16 +22,20 @@ enum LeftoverScanner {
 
         let bundleID = app.bundleID.isEmpty ? nil : app.bundleID
         let name = app.name
+        // The developer Team ID keys Group Containers and some App Scripts that
+        // are not named after the bundle ID.
+        let teamID = CodeSignature.teamIdentifier(forBundleAt: app.url)
 
-        items.append(contentsOf: userLibraryItems(bundleID: bundleID, name: name))
+        items.append(contentsOf: userLibraryItems(bundleID: bundleID, name: name, teamID: teamID))
+        items.append(contentsOf: systemLibraryItems(bundleID: bundleID))
         items.append(contentsOf: launchItems(bundleID: bundleID, name: name))
 
         return dedupe(items).sorted(by: ordering)
     }
 
-    // MARK: - User library
+    // MARK: - User library (~/Library)
 
-    private static func userLibraryItems(bundleID: String?, name: String) -> [RelatedItem] {
+    private static func userLibraryItems(bundleID: String?, name: String, teamID: String?) -> [RelatedItem] {
         let lib = FileSystem.userLibrary
         var out: [RelatedItem] = []
 
@@ -47,8 +51,11 @@ enum LeftoverScanner {
             out += exactChild(lib, "Application Support/\(id)", .applicationSupport)
             out += exactChild(lib, "Logs/\(id)", .logs)
 
-            // Preferences: any plist whose name starts with the bundle ID.
+            // Preferences: any plist whose name starts with the bundle ID, both
+            // the top-level folder and the per-host ByHost folder.
             out += prefixMatches(in: lib.appendingPathComponent("Preferences"),
+                                 prefix: id, category: .preferences, confidence: .exact)
+            out += prefixMatches(in: lib.appendingPathComponent("Preferences/ByHost"),
                                  prefix: id, category: .preferences, confidence: .exact)
 
             // Cookies keyed by bundle ID.
@@ -59,10 +66,41 @@ enum LeftoverScanner {
                                     needle: id, category: .groupContainers)
         }
 
+        // Team-ID-keyed matches: Group Containers and App Scripts are frequently
+        // prefixed with the 10-character team ID rather than the bundle ID.
+        if let team = teamID {
+            out += substringMatches(in: lib.appendingPathComponent("Group Containers"),
+                                    needle: team, category: .groupContainers)
+            out += substringMatches(in: lib.appendingPathComponent("Application Scripts"),
+                                    needle: team, category: .applicationScripts)
+        }
+
         // Name-keyed likely matches: folders named after the app's display name.
         for sub in ["Application Support", "Caches", "Logs"] {
             out += likelyChild(lib, "\(sub)/\(name)", category(forSub: sub))
         }
+
+        return out
+    }
+
+    // MARK: - System library (/Library, admin domain)
+
+    /// App leftovers that live in the system-wide `/Library`. These require an
+    /// administrator password to remove, so they are tagged `.admin`. Only exact,
+    /// bundle-ID-named items are matched here to keep false positives at zero.
+    private static func systemLibraryItems(bundleID: String?) -> [RelatedItem] {
+        guard let id = bundleID else { return [] }
+        let lib = FileSystem.systemLibrary
+        var out: [RelatedItem] = []
+
+        out += exactChild(lib, "Application Support/\(id)", .applicationSupport, domain: .admin)
+        out += exactChild(lib, "Caches/\(id)", .caches, domain: .admin)
+        out += exactChild(lib, "Logs/\(id)", .logs, domain: .admin)
+        out += exactChild(lib, "PrivilegedHelperTools/\(id)", .binarySupport, domain: .admin)
+
+        // System preferences: plists named after the bundle ID.
+        out += prefixMatches(in: lib.appendingPathComponent("Preferences"),
+                             prefix: id, category: .preferences, confidence: .exact, domain: .admin)
 
         return out
     }
@@ -127,35 +165,39 @@ enum LeftoverScanner {
 
     // MARK: - Match helpers
 
-    private static func exactChild(_ root: URL, _ relative: String, _ category: ItemCategory) -> [RelatedItem] {
+    private static func exactChild(_ root: URL, _ relative: String, _ category: ItemCategory,
+                                   domain: FileDomain = .user) -> [RelatedItem] {
         let url = root.appendingPathComponent(relative)
         guard FileSystem.exists(url) else { return [] }
         return [RelatedItem(url: url, category: category, confidence: .exact,
-                            domain: .user, size: -1)]
+                            domain: domain, size: -1)]
     }
 
-    private static func likelyChild(_ root: URL, _ relative: String, _ category: ItemCategory) -> [RelatedItem] {
+    private static func likelyChild(_ root: URL, _ relative: String, _ category: ItemCategory,
+                                    domain: FileDomain = .user) -> [RelatedItem] {
         let url = root.appendingPathComponent(relative)
         guard FileSystem.exists(url) else { return [] }
         return [RelatedItem(url: url, category: category, confidence: .likely,
-                            domain: .user, size: -1)]
+                            domain: domain, size: -1)]
     }
 
     private static func prefixMatches(in dir: URL, prefix: String,
                                       category: ItemCategory,
-                                      confidence: MatchConfidence) -> [RelatedItem] {
+                                      confidence: MatchConfidence,
+                                      domain: FileDomain = .user) -> [RelatedItem] {
         FileSystem.children(of: dir)
             .filter { $0.lastPathComponent.hasPrefix(prefix) }
             .map { RelatedItem(url: $0, category: category, confidence: confidence,
-                               domain: .user, size: -1) }
+                               domain: domain, size: -1) }
     }
 
     private static func substringMatches(in dir: URL, needle: String,
-                                         category: ItemCategory) -> [RelatedItem] {
+                                         category: ItemCategory,
+                                         domain: FileDomain = .user) -> [RelatedItem] {
         FileSystem.children(of: dir)
             .filter { $0.lastPathComponent.localizedCaseInsensitiveContains(needle) }
             .map { RelatedItem(url: $0, category: category, confidence: .likely,
-                               domain: .user, size: -1) }
+                               domain: domain, size: -1) }
     }
 
     // MARK: - Ordering & dedupe

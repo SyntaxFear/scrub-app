@@ -42,6 +42,12 @@ struct ContentView: View {
         .onChange(of: store.mode) { _, newValue in
             if newValue == .leftovers { store.enterLeftoversMode() }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Re-probe when the user returns from System Settings. This clears the
+            // banner automatically if the grant is already live in this process.
+            store.refreshFullDiskAccess()
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
             if !store.fullDiskAccessGranted {
                 FullDiskAccessBanner()

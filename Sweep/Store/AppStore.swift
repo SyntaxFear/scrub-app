@@ -9,15 +9,21 @@ import Observation
 final class AppStore {
 
     enum Mode: Hashable { case apps, leftovers }
+    enum AppSortField: Hashable { case name, size }
 
     // MARK: - Navigation & search
     var mode: Mode = .apps
     var searchText: String = ""
 
+    // MARK: - Sidebar sorting
+    var appSortField: AppSortField = .name
+    var appSortAscending = true
+
     // MARK: - Apps
     private(set) var apps: [InstalledApp] = []
     private(set) var isLoadingApps = false
     var selectedAppID: InstalledApp.ID?
+    private var appLoadToken = 0
 
     // MARK: - Leftovers
     private(set) var leftovers: [OrphanGroup] = []
@@ -29,6 +35,9 @@ final class AppStore {
     private(set) var detailItems: [RelatedItem] = []
     var detailSelection: Set<URL> = []
     private(set) var isScanningDetail = false
+    /// True while folder sizes are still being measured in the background. Drives
+    /// the loading indicators on rows and the selection total.
+    private(set) var isSizingDetail = false
     private var detailScanToken = 0
 
     // MARK: - Removal flow
@@ -40,6 +49,9 @@ final class AppStore {
 
     // MARK: - Environment
     private(set) var fullDiskAccessGranted = true
+    /// True once the user has opened System Settings to grant access. Used to
+    /// surface the "Quit & Reopen" prompt, since a grant only applies on relaunch.
+    private(set) var didRequestFullDiskAccess = false
 
     // MARK: - Derived
 
@@ -52,19 +64,35 @@ final class AppStore {
     }
 
     var filteredApps: [InstalledApp] {
-        guard !searchText.isEmpty else { return apps }
-        return apps.filter {
+        let base = searchText.isEmpty ? apps : apps.filter {
             $0.name.localizedCaseInsensitiveContains(searchText)
             || $0.bundleID.localizedCaseInsensitiveContains(searchText)
         }
+        let sorted: [InstalledApp]
+        switch appSortField {
+        case .name:
+            sorted = base.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .size:
+            // Unknown sizes (-1) sort as smallest so they sink to the bottom
+            // while still being computed.
+            sorted = base.sorted { max(0, $0.size) < max(0, $1.size) }
+        }
+        return appSortAscending ? sorted : sorted.reversed()
     }
 
     var filteredLeftovers: [OrphanGroup] {
-        guard !searchText.isEmpty else { return leftovers }
-        return leftovers.filter {
+        let base = searchText.isEmpty ? leftovers : leftovers.filter {
             $0.displayName.localizedCaseInsensitiveContains(searchText)
             || $0.inferredBundleID.localizedCaseInsensitiveContains(searchText)
         }
+        let sorted: [OrphanGroup]
+        switch appSortField {
+        case .name:
+            sorted = base.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        case .size:
+            sorted = base.sorted { $0.totalSize < $1.totalSize }
+        }
+        return appSortAscending ? sorted : sorted.reversed()
     }
 
     var selectedItems: [RelatedItem] {
@@ -91,33 +119,56 @@ final class AppStore {
         Task { await loadApps() }
     }
 
+    /// Re-probes Full Disk Access. Note this can only flip to `true` in a process
+    /// that was launched *after* the grant was given (see `FullDiskAccess`).
     func refreshFullDiskAccess() {
         fullDiskAccessGranted = FullDiskAccess.isGranted()
+    }
+
+    /// Opens System Settings at Full Disk Access and remembers that we asked, so
+    /// the banner can offer the relaunch that actually applies the grant.
+    @MainActor
+    func openFullDiskAccessSettings() {
+        didRequestFullDiskAccess = true
+        FullDiskAccess.openSettings()
     }
 
     // MARK: - App loading
 
     func loadApps() async {
+        appLoadToken += 1
+        let token = appLoadToken
         isLoadingApps = true
-        defer { isLoadingApps = false }
 
         let discovered = await Task.detached(priority: .userInitiated) {
             AppScanner.discover()
         }.value
+        guard token == appLoadToken else { return }
         apps = discovered
+        isLoadingApps = false
 
-        // Phase 2: sizes in the background, then merge back.
-        let sized = await Task.detached(priority: .utility) {
-            discovered.map { app -> InstalledApp in
-                var copy = app
-                copy.size = AppScanner.size(of: app)
-                return copy
+        // Phase 2: compute each app's full footprint (bundle + all related files)
+        // in the background, applying each result as it lands so the sidebar
+        // fills in progressively. Bounded concurrency keeps the UI responsive
+        // without hammering the disk with dozens of parallel directory walks.
+        await withTaskGroup(of: (InstalledApp.ID, Int64).self) { group in
+            let maxConcurrent = 4
+            var next = 0
+            func addTask() {
+                guard next < discovered.count else { return }
+                let app = discovered[next]
+                next += 1
+                group.addTask(priority: .utility) { (app.id, AppScanner.footprint(of: app)) }
             }
-        }.value
+            for _ in 0..<maxConcurrent { addTask() }
 
-        // Only apply if the list hasn't been replaced in the meantime.
-        if apps.map(\.id) == sized.map(\.id) {
-            apps = sized
+            for await (id, size) in group {
+                if token != appLoadToken { group.cancelAll(); return }
+                if let idx = apps.firstIndex(where: { $0.id == id }) {
+                    apps[idx].size = size
+                }
+                addTask()
+            }
         }
     }
 
@@ -145,12 +196,14 @@ final class AppStore {
         detailItems = group.items.sorted(by: LeftoverScanner.ordering)
         detailSelection = Set(group.items.map(\.url))   // leftovers default to all selected
         isScanningDetail = false
+        isSizingDetail = false
     }
 
     private func scanDetail(for app: InstalledApp) {
         detailScanToken += 1
         let token = detailScanToken
         isScanningDetail = true
+        isSizingDetail = false
         detailItems = []
         detailSelection = []
 
@@ -164,6 +217,7 @@ final class AppStore {
             // Exact matches are checked by default; likely matches are left off.
             detailSelection = Set(items.filter { $0.confidence == .exact }.map(\.url))
             isScanningDetail = false
+            isSizingDetail = true
 
             // Compute sizes in the background and merge in.
             let sized = await Task.detached(priority: .utility) {
@@ -175,6 +229,7 @@ final class AppStore {
             }.value
             guard token == detailScanToken else { return }
             detailItems = sized.sorted(by: LeftoverScanner.ordering)
+            isSizingDetail = false
         }
     }
 
@@ -247,6 +302,14 @@ final class AppStore {
         let items = selectedItems
         guard !items.isEmpty else { return }
         pendingRemoval = items
+        showingConfirmation = true
+    }
+
+    /// Requests removal of a single item directly (the per-row trash action),
+    /// independent of the current selection. Still routed through the
+    /// confirmation sheet so the consequences stay explicit.
+    func requestRemoval(of item: RelatedItem) {
+        pendingRemoval = [item]
         showingConfirmation = true
     }
 

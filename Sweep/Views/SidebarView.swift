@@ -27,16 +27,20 @@ struct SidebarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .controlSize(.small)
         } else {
-            List(selection: $store.selectedAppID) {
-                Section("Applications") {
-                    ForEach(store.filteredApps) { app in
-                        AppRow(app: app).tag(app.id)
+            VStack(spacing: 0) {
+                SortMenu(field: $store.appSortField, ascending: $store.appSortAscending)
+                Divider()
+                List(selection: $store.selectedAppID) {
+                    Section("Applications") {
+                        ForEach(store.filteredApps) { app in
+                            AppRow(app: app).tag(app.id)
+                        }
                     }
                 }
-            }
-            .scrollContentBackground(.hidden)
-            .onChange(of: store.selectedAppID) { _, newValue in
-                store.selectApp(newValue)
+                .scrollContentBackground(.hidden)
+                .onChange(of: store.selectedAppID) { _, newValue in
+                    store.selectApp(newValue)
+                }
             }
         }
     }
@@ -58,18 +62,54 @@ struct SidebarView: View {
                 description: Text("Files from apps you've already deleted will appear here.")
             )
         } else {
-            List(selection: $store.selectedOrphanID) {
-                Section("From deleted apps") {
-                    ForEach(store.filteredLeftovers) { group in
-                        LeftoverRow(group: group).tag(group.id)
+            VStack(spacing: 0) {
+                SortMenu(field: $store.appSortField, ascending: $store.appSortAscending)
+                Divider()
+                List(selection: $store.selectedOrphanID) {
+                    Section("From deleted apps") {
+                        ForEach(store.filteredLeftovers) { group in
+                            LeftoverRow(group: group).tag(group.id)
+                        }
                     }
                 }
-            }
-            .scrollContentBackground(.hidden)
-            .onChange(of: store.selectedOrphanID) { _, newValue in
-                store.selectOrphan(newValue)
+                .scrollContentBackground(.hidden)
+                .onChange(of: store.selectedOrphanID) { _, newValue in
+                    store.selectOrphan(newValue)
+                }
             }
         }
+    }
+}
+
+/// A compact sort control for the app list: sort by name or size, ascending or
+/// descending.
+private struct SortMenu: View {
+    @Binding var field: AppStore.AppSortField
+    @Binding var ascending: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Sort").font(.caption).foregroundStyle(.secondary)
+            Picker("Sort by", selection: $field) {
+                Text("Name").tag(AppStore.AppSortField.name)
+                Text("Size").tag(AppStore.AppSortField.size)
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+
+            Button {
+                ascending.toggle()
+            } label: {
+                Image(systemName: ascending ? "arrow.up" : "arrow.down")
+            }
+            .buttonStyle(.borderless)
+            .help(ascending ? "Ascending" : "Descending")
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
     }
 }
 
@@ -89,10 +129,14 @@ private struct AppRow: View {
                 }
             }
             Spacer(minLength: 4)
-            Text(Format.size(app.size))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+            if app.size < 0 {
+                ProgressView().controlSize(.mini)
+            } else {
+                Text(Format.size(app.size))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
         }
         .padding(.vertical, 2)
     }

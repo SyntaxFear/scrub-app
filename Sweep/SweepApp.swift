@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SweepApp: App {
+struct ScrubApp: App {
     @State private var store = AppStore()
 
     var body: some Scene {

@@ -15,6 +15,8 @@ enum OrphanScanner {
             (lib.appendingPathComponent("HTTPStorages"), .httpStorages),
             (lib.appendingPathComponent("WebKit"), .webKit),
             (lib.appendingPathComponent("Caches"), .caches),
+            (lib.appendingPathComponent("Application Support"), .applicationSupport),
+            (lib.appendingPathComponent("Logs"), .logs),
         ]
     }
 

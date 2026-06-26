@@ -81,9 +81,15 @@ enum FileSystem {
 
     // MARK: - Writability
 
-    /// True when the current user can delete the item directly (its parent
-    /// directory is writable). Used to decide trash vs. privileged removal.
+    /// True when the current user can delete the item directly by moving it to
+    /// the Trash. Both the parent directory *and* the item itself must be
+    /// writable by us. The item check matters for root-owned apps (e.g. App
+    /// Store installs) sitting in the admin-writable `/Applications` folder:
+    /// the parent is writable, but the bundle is not, so `trashItem` would fail.
+    /// Those are reported as not user-deletable and routed to the privileged
+    /// removal path instead. Used to decide trash vs. privileged removal.
     static func isUserDeletable(_ url: URL) -> Bool {
-        fm.isWritableFile(atPath: url.deletingLastPathComponent().path)
+        let parent = url.deletingLastPathComponent().path
+        return fm.isWritableFile(atPath: parent) && fm.isWritableFile(atPath: url.path)
     }
 }

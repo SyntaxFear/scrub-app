@@ -9,7 +9,7 @@ struct EmptyStateView: View {
             VStack(spacing: 6) {
                 Text("Select an app to uninstall")
                     .font(.title3.weight(.medium))
-                Text("Pick an app from the list, or drag one onto this window.\nSweep finds every related file so nothing gets left behind.")
+                Text("Pick an app from the list, or drag one onto this window.\nScrub finds every related file so nothing gets left behind.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -49,4 +49,14 @@ enum AppScanner {
     static func size(of app: InstalledApp) -> Int64 {
         FileSystem.size(of: app.url)
     }
+
+    /// The app's full on-disk footprint: the bundle plus every related support
+    /// file (caches, Application Support, containers, …) — the same set the
+    /// detail view lists and totals. This is what the user actually frees by
+    /// uninstalling, so it's what the sidebar shows. Expensive: it walks every
+    /// related folder, so it's meant for background computation.
+    static func footprint(of app: InstalledApp) -> Int64 {
+        LeftoverScanner.scan(app: app)
+            .reduce(Int64(0)) { $0 + max(0, FileSystem.size(of: $1.url)) }
+    }
 }

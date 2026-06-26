@@ -13,3 +13,6 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Marketing screenshots (live in the scrub-site repo)
+site-assets/

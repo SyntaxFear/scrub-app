@@ -15,6 +15,14 @@ struct InstalledApp: Identifiable, Hashable, Sendable {
 
     var id: String { bundleID.isEmpty ? url.path : bundleID }
 
-    static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    // `size` is part of equality so the sidebar refreshes when sizes finish
+    // computing; `id` alone identifies the app (see `id`). Without this, SwiftUI
+    // treats a row whose only change is `size` as unchanged and never updates it.
+    static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool {
+        lhs.id == rhs.id && lhs.size == rhs.size
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(size)
+    }
 }
