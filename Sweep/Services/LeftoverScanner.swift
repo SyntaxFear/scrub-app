@@ -67,12 +67,14 @@ enum LeftoverScanner {
         }
 
         // Team-ID-keyed matches: Group Containers and App Scripts are frequently
-        // prefixed with the 10-character team ID rather than the bundle ID.
+        // prefixed with the 10-character team ID rather than the bundle ID. A
+        // team ID is shared by every app from the same developer, so these are
+        // flagged `vendorShared` — surfaced for review but never auto-selected.
         if let team = teamID {
             out += substringMatches(in: lib.appendingPathComponent("Group Containers"),
-                                    needle: team, category: .groupContainers)
+                                    needle: team, category: .groupContainers, vendorShared: true)
             out += substringMatches(in: lib.appendingPathComponent("Application Scripts"),
-                                    needle: team, category: .applicationScripts)
+                                    needle: team, category: .applicationScripts, vendorShared: true)
         }
 
         // Name-keyed likely matches: folders named after the app's display name.
@@ -193,11 +195,12 @@ enum LeftoverScanner {
 
     private static func substringMatches(in dir: URL, needle: String,
                                          category: ItemCategory,
-                                         domain: FileDomain = .user) -> [RelatedItem] {
+                                         domain: FileDomain = .user,
+                                         vendorShared: Bool = false) -> [RelatedItem] {
         FileSystem.children(of: dir)
             .filter { $0.lastPathComponent.localizedCaseInsensitiveContains(needle) }
             .map { RelatedItem(url: $0, category: category, confidence: .likely,
-                               domain: domain, size: -1) }
+                               domain: domain, size: -1, vendorShared: vendorShared) }
     }
 
     // MARK: - Ordering & dedupe

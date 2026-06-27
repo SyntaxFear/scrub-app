@@ -1,0 +1,289 @@
+import Foundation
+import AuthenticationServices
+import CryptoKit
+import AppKit
+
+/// The signed-in person, as returned by the backend (no secrets).
+struct AuthUser: Codable, Equatable, Sendable {
+    let id: String
+    let email: String
+    let name: String?
+    let image: String?
+}
+
+enum AuthError: Error {
+    case network
+    case server(String)
+    var message: String {
+        switch self {
+        case .network: return "Network error — check your connection and try again."
+        case .server(let m): return m
+        }
+    }
+}
+
+/// Native Google OAuth client config. Filled in once the client is created in the
+/// Google Cloud Console (see docs/AUTH-SETUP.md). Empty values disable Google
+/// sign-in gracefully.
+enum GoogleConfig {
+    static let clientID = ""      // "…apps.googleusercontent.com"
+    static let clientSecret = ""  // Desktop-client secret (not confidential for installed apps)
+    static let scheme = "com.levani.scrub"
+    static var redirectURI: String { "\(scheme):/oauth2redirect" }
+    static var isConfigured: Bool { !clientID.isEmpty }
+}
+
+/// Drives the required sign-in wall and talks to the Convex native-auth endpoints.
+/// All token/code verification happens server-side; the app only ever holds an
+/// opaque session token (in the Keychain).
+@MainActor
+@Observable
+final class AuthStore: NSObject {
+    enum State: Equatable {
+        case unknown          // checking a stored session
+        case signedOut
+        case signedIn(AuthUser)
+    }
+
+    var state: State = .unknown
+    var errorMessage: String?
+    var isBusy = false
+
+    var googleAvailable: Bool { GoogleConfig.isConfigured }
+
+    private let base = URL(string: "https://healthy-shepherd-34.eu-west-1.convex.site/native/auth")!
+    private var webSession: ASWebAuthenticationSession?
+
+    // MARK: - Session lifecycle
+
+    /// On launch, validate any stored token.
+    func restore() async {
+        guard let token = Keychain.token() else { state = .signedOut; return }
+        do {
+            let data = try await post("session", ["token": token])
+            let resp = try JSONDecoder().decode(SessionResponse.self, from: data)
+            state = .signedIn(resp.user)
+        } catch {
+            Keychain.clear()
+            state = .signedOut
+        }
+    }
+
+    func signOut() {
+        if let token = Keychain.token() {
+            Task { _ = try? await post("signout", ["token": token]) }
+        }
+        Keychain.clear()
+        state = .signedOut
+    }
+
+    // MARK: - Sign in with Apple
+
+    func signInWithApple() {
+        errorMessage = nil
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.fullName, .email]
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        controller.performRequests()
+    }
+
+    // MARK: - Sign in with Google (PKCE)
+
+    func signInWithGoogle() {
+        errorMessage = nil
+        guard GoogleConfig.isConfigured else {
+            errorMessage = "Google sign-in isn’t set up yet."
+            return
+        }
+        let verifier = Self.randomURLSafe(64)
+        let challenge = Self.codeChallenge(for: verifier)
+        let state = Self.randomURLSafe(32)
+        var comps = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+        comps.queryItems = [
+            .init(name: "client_id", value: GoogleConfig.clientID),
+            .init(name: "redirect_uri", value: GoogleConfig.redirectURI),
+            .init(name: "response_type", value: "code"),
+            .init(name: "scope", value: "openid email profile"),
+            .init(name: "code_challenge", value: challenge),
+            .init(name: "code_challenge_method", value: "S256"),
+            .init(name: "state", value: state),
+        ]
+        let session = ASWebAuthenticationSession(
+            url: comps.url!, callbackURLScheme: GoogleConfig.scheme
+        ) { [weak self] callback, _ in
+            guard let self,
+                  let callback,
+                  let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems,
+                  items.first(where: { $0.name == "state" })?.value == state,
+                  let code = items.first(where: { $0.name == "code" })?.value else { return }
+            Task { await self.exchangeGoogle(code: code, verifier: verifier) }
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = true
+        webSession = session
+        session.start()
+    }
+
+    private func exchangeGoogle(code: String, verifier: String) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+            req.httpMethod = "POST"
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            let form = [
+                "client_id": GoogleConfig.clientID,
+                "client_secret": GoogleConfig.clientSecret,
+                "code": code,
+                "code_verifier": verifier,
+                "grant_type": "authorization_code",
+                "redirect_uri": GoogleConfig.redirectURI,
+            ]
+            .map { "\($0.key)=\(Self.formEncode($0.value))" }
+            .joined(separator: "&")
+            req.httpBody = form.data(using: .utf8)
+
+            let (data, _) = try await URLSession.shared.data(for: req)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let idToken = json["id_token"] as? String else {
+                throw AuthError.server("Google sign-in failed.")
+            }
+            let result = try await post("google", ["idToken": idToken])
+            try handleAuth(result)
+        } catch {
+            errorMessage = (error as? AuthError)?.message ?? "Google sign-in failed."
+        }
+    }
+
+    // MARK: - Email code
+
+    /// Requests a code; returns true if it was sent.
+    func requestEmailCode(_ email: String) async -> Bool {
+        errorMessage = nil
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            _ = try await post("email/request", ["email": email])
+            return true
+        } catch {
+            errorMessage = (error as? AuthError)?.message ?? "Couldn’t send the code."
+            return false
+        }
+    }
+
+    func verifyEmailCode(email: String, code: String) async {
+        errorMessage = nil
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let data = try await post("email/verify", ["email": email, "code": code])
+            try handleAuth(data)
+        } catch {
+            errorMessage = (error as? AuthError)?.message ?? "Incorrect code."
+        }
+    }
+
+    // MARK: - Networking
+
+    private struct AuthResponse: Codable { let token: String; let user: AuthUser }
+    private struct SessionResponse: Codable { let user: AuthUser }
+    private struct ErrorResponse: Codable { let error: String }
+
+    private func post(_ path: String, _ body: [String: Any]) async throws -> Data {
+        var req = URLRequest(url: base.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw AuthError.network }
+        if http.statusCode >= 400 {
+            let msg = (try? JSONDecoder().decode(ErrorResponse.self, from: data))?.error
+                ?? "Sign-in failed."
+            throw AuthError.server(msg)
+        }
+        return data
+    }
+
+    private func handleAuth(_ data: Data) throws {
+        let resp = try JSONDecoder().decode(AuthResponse.self, from: data)
+        Keychain.saveToken(resp.token)
+        state = .signedIn(resp.user)
+    }
+
+    // MARK: - PKCE / encoding helpers
+
+    private static func randomURLSafe(_ count: Int) -> String {
+        var bytes = [UInt8](repeating: 0, count: count)
+        _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        return base64URL(Data(bytes))
+    }
+
+    private static func codeChallenge(for verifier: String) -> String {
+        base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func formEncode(_ s: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
+    }
+}
+
+// MARK: - Presentation anchors
+
+extension AuthStore: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let cred = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = cred.identityToken,
+              let idToken = String(data: tokenData, encoding: .utf8) else {
+            errorMessage = "Apple sign-in failed."
+            return
+        }
+        let name = [cred.fullName?.givenName, cred.fullName?.familyName]
+            .compactMap { $0 }.joined(separator: " ")
+        isBusy = true
+        Task {
+            defer { isBusy = false }
+            do {
+                let data = try await post("apple", ["identityToken": idToken, "name": name])
+                try handleAuth(data)
+            } catch {
+                errorMessage = (error as? AuthError)?.message ?? "Apple sign-in failed."
+            }
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithError error: Error) {
+        // Cancellation is silent; other failures surface a message.
+        if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
+            errorMessage = "Apple sign-in failed."
+        }
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        anchor()
+    }
+}
+
+extension AuthStore: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        anchor()
+    }
+}
+
+private extension AuthStore {
+    func anchor() -> ASPresentationAnchor {
+        NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
+    }
+}

@@ -116,7 +116,37 @@ final class AppStore {
 
     func start() {
         fullDiskAccessGranted = FullDiskAccess.isGranted()
+        checkWhatsNew()
         Task { await loadApps() }
+    }
+
+    // MARK: - What's New
+
+    /// True while the post-update "What's New" chip should show by the sidebar toggle.
+    var showWhatsNewChip = false
+    /// Drives the "What's New" sheet.
+    var showingWhatsNew = false
+
+    /// On launch, show the chip when the running version differs from the last one
+    /// the user saw. The very first install just records the version silently.
+    private func checkWhatsNew() {
+        let current = Preferences.currentVersion
+        let haveNotesForCurrent = Changelog.entries.contains { $0.version == current }
+        if let last = Preferences.lastSeenVersion {
+            showWhatsNewChip = (last != current) && haveNotesForCurrent
+        } else {
+            Preferences.lastSeenVersion = current
+        }
+    }
+
+    func openWhatsNew() {
+        showingWhatsNew = true
+        dismissWhatsNewChip()
+    }
+
+    func dismissWhatsNewChip() {
+        showWhatsNewChip = false
+        Preferences.lastSeenVersion = Preferences.currentVersion
     }
 
     /// Re-probes Full Disk Access. Note this can only flip to `true` in a process
@@ -151,21 +181,25 @@ final class AppStore {
         // in the background, applying each result as it lands so the sidebar
         // fills in progressively. Bounded concurrency keeps the UI responsive
         // without hammering the disk with dozens of parallel directory walks.
-        await withTaskGroup(of: (InstalledApp.ID, Int64).self) { group in
+        await withTaskGroup(of: (InstalledApp.ID, Int64, Int64).self) { group in
             let maxConcurrent = 4
             var next = 0
             func addTask() {
                 guard next < discovered.count else { return }
                 let app = discovered[next]
                 next += 1
-                group.addTask(priority: .utility) { (app.id, AppScanner.footprint(of: app)) }
+                group.addTask(priority: .utility) {
+                    let f = AppScanner.footprint(of: app)
+                    return (app.id, f.onDisk, f.apparent)
+                }
             }
             for _ in 0..<maxConcurrent { addTask() }
 
-            for await (id, size) in group {
+            for await (id, onDisk, apparent) in group {
                 if token != appLoadToken { group.cancelAll(); return }
                 if let idx = apps.firstIndex(where: { $0.id == id }) {
-                    apps[idx].size = size
+                    apps[idx].size = onDisk
+                    apps[idx].apparentSize = apparent
                 }
                 addTask()
             }
@@ -199,6 +233,33 @@ final class AppStore {
         isSizingDetail = false
     }
 
+    /// The items checked by default when an app is selected.
+    ///
+    /// Exact (bundle-ID) matches are always trusted. App-specific name- and
+    /// bundle-ID matches (`.likely`, not `vendorShared`) are trusted too — but
+    /// only once the app's identity is *corroborated* by an exact support-file
+    /// match, i.e. independent proof that this bundle ID really owns data on
+    /// disk. With that proof, a folder named after the same app — like an
+    /// Electron app's multi-gigabyte `Application Support/<Name>` (named after
+    /// the display name, not the bundle ID) — is almost certainly its data, so
+    /// it's selected for a *complete* uninstall instead of being silently left
+    /// behind. Two cases stay unchecked for the user to confirm: matches with no
+    /// corroboration (pure name guesses), and `vendorShared` Team-ID folders
+    /// that sibling apps from the same developer may also use.
+    static func defaultSelection(for items: [RelatedItem]) -> Set<URL> {
+        let identityConfirmed = items.contains {
+            $0.confidence == .exact && $0.category != .application
+        }
+        return Set(
+            items
+                .filter { item in
+                    if item.confidence == .exact { return true }
+                    return identityConfirmed && !item.vendorShared
+                }
+                .map(\.url)
+        )
+    }
+
     private func scanDetail(for app: InstalledApp) {
         detailScanToken += 1
         let token = detailScanToken
@@ -214,8 +275,7 @@ final class AppStore {
             guard token == detailScanToken else { return }
 
             detailItems = items
-            // Exact matches are checked by default; likely matches are left off.
-            detailSelection = Set(items.filter { $0.confidence == .exact }.map(\.url))
+            detailSelection = Self.defaultSelection(for: items)
             isScanningDetail = false
             isSizingDetail = true
 
@@ -223,7 +283,9 @@ final class AppStore {
             let sized = await Task.detached(priority: .utility) {
                 items.map { item -> RelatedItem in
                     var copy = item
-                    copy.size = FileSystem.size(of: item.url)
+                    let m = FileSystem.measure(of: item.url)
+                    copy.size = m.onDisk
+                    copy.apparentSize = m.apparent
                     return copy
                 }
             }.value
@@ -284,7 +346,9 @@ final class AppStore {
                 var copy = group
                 copy.items = group.items.map { item in
                     var i = item
-                    i.size = FileSystem.size(of: item.url)
+                    let m = FileSystem.measure(of: item.url)
+                    i.size = m.onDisk
+                    i.apparentSize = m.apparent
                     return i
                 }
                 return copy
@@ -367,7 +431,9 @@ final class AppStore {
                 copy.items.removeAll { wasRemoved($0.url) }
                 return copy.items.isEmpty ? nil : copy
             }
-            if selectedOrphan == nil { selectedOrphanID = leftovers.first?.id }
+            // Reselect (not just reassign the id) so the detail pane refreshes to
+            // the newly-focused group instead of showing the removed one's items.
+            if selectedOrphan == nil { selectOrphan(leftovers.first?.id) }
         }
     }
 }

@@ -51,16 +51,26 @@ enum FileSystem {
 
     // MARK: - Size
 
-    /// Allocated size of a file or directory tree, in bytes. Returns 0 on error.
-    static func size(of url: URL) -> Int64 {
+    /// On-disk (allocated) and apparent (logical) size of a file or directory tree,
+    /// in bytes, computed in a single walk. The two differ for **sparse files** —
+    /// e.g. virtual-machine disk images — where the apparent size can be far larger
+    /// than the blocks actually used on disk. On-disk is what you truly reclaim by
+    /// deleting; apparent is what Finder's "Size" column reports. Returns (0, 0) on
+    /// error.
+    static func measure(of url: URL) -> (onDisk: Int64, apparent: Int64) {
         let keys: [URLResourceKey] = [
-            .isRegularFileKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
+            .isRegularFileKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey,
         ]
+
+        func sizes(_ values: URLResourceValues) -> (Int64, Int64) {
+            (Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0),
+             Int64(values.fileSize ?? 0))
+        }
 
         // Single file fast path.
         if let values = try? url.resourceValues(forKeys: Set(keys)),
            values.isRegularFile == true {
-            return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+            return sizes(values)
         }
 
         guard let enumerator = fm.enumerator(
@@ -68,15 +78,24 @@ enum FileSystem {
             includingPropertiesForKeys: keys,
             options: [],
             errorHandler: { _, _ in true }
-        ) else { return 0 }
+        ) else { return (0, 0) }
 
-        var total: Int64 = 0
+        var onDisk: Int64 = 0
+        var apparent: Int64 = 0
         for case let child as URL in enumerator {
             guard let values = try? child.resourceValues(forKeys: Set(keys)),
                   values.isRegularFile == true else { continue }
-            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+            let (d, a) = sizes(values)
+            onDisk += d
+            apparent += a
         }
-        return total
+        return (onDisk, apparent)
+    }
+
+    /// On-disk (allocated) size only — the space actually freed by deleting. Returns
+    /// 0 on error.
+    static func size(of url: URL) -> Int64 {
+        measure(of: url).onDisk
     }
 
     // MARK: - Writability

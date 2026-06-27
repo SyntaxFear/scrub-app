@@ -6,8 +6,12 @@ struct InstalledApp: Identifiable, Hashable, Sendable {
     let name: String
     let url: URL
     let version: String
-    /// Size of the `.app` bundle in bytes. `-1` means "not computed yet".
+    /// Full on-disk footprint in bytes (bundle + related files) — what deleting
+    /// frees. `-1` means "not computed yet".
     var size: Int64
+    /// Apparent (logical) footprint in bytes — larger than `size` for sparse files.
+    /// `-1` means "not computed yet".
+    var apparentSize: Int64 = -1
     /// True when the app's own bundle lives in a system-owned location and the
     /// `.app` itself needs admin rights to delete (e.g. `/Applications` items
     /// installed by a pkg as root). The associated user files are still trashed.
@@ -19,10 +23,11 @@ struct InstalledApp: Identifiable, Hashable, Sendable {
     // computing; `id` alone identifies the app (see `id`). Without this, SwiftUI
     // treats a row whose only change is `size` as unchanged and never updates it.
     static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool {
-        lhs.id == rhs.id && lhs.size == rhs.size
+        lhs.id == rhs.id && lhs.size == rhs.size && lhs.apparentSize == rhs.apparentSize
     }
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(size)
+        hasher.combine(apparentSize)
     }
 }

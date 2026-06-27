@@ -10,7 +10,7 @@ struct DetailView: View {
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let app = store.selectedApp {
-                detail(header: AnyView(AppHeader(app: app, total: headerTotal)))
+                detail(header: AnyView(AppHeader(app: app, total: headerTotal, apparentTotal: headerApparentTotal)))
             } else if let orphan = store.selectedOrphan {
                 detail(header: AnyView(OrphanHeader(group: orphan)))
             } else {
@@ -21,6 +21,10 @@ struct DetailView: View {
 
     private var headerTotal: Int64 {
         store.detailItems.reduce(0) { $0 + max(0, $1.size) }
+    }
+
+    private var headerApparentTotal: Int64 {
+        store.detailItems.reduce(0) { $0 + max(0, $1.apparentSize) }
     }
 
     // MARK: - Shared detail body
@@ -40,8 +44,10 @@ struct DetailView: View {
 
 private struct AppHeader: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(PreferenceKey.showSizeHint) private var showSizeHint = true
     let app: InstalledApp
     let total: Int64
+    let apparentTotal: Int64
 
     var body: some View {
         HStack(spacing: 14) {
@@ -52,6 +58,8 @@ private struct AppHeader: View {
                     Text("Version \(app.version)  ·  \(store.detailItems.count) related items  ·  \(Format.size(total)) total")
                     if store.isSizingDetail {
                         ProgressView().controlSize(.mini)
+                    } else if showSizeHint, let hint = Format.listedHint(onDisk: total, apparent: apparentTotal) {
+                        Text("· \(hint)").foregroundStyle(.tertiary)
                     }
                 }
                 .font(.subheadline)
@@ -102,6 +110,7 @@ private struct OrphanHeader: View {
 /// the rows.
 private struct ItemsTable: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(PreferenceKey.showSizeHint) private var showSizeHint = true
 
     enum Field { case name, kind, size }
     @State private var sortField: Field = .kind
@@ -242,7 +251,12 @@ private struct ItemsTable: View {
                 if item.size < 0 {
                     ProgressView().controlSize(.mini)
                 } else {
-                    Text(Format.size(item.size)).monospacedDigit()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(Format.size(item.size)).monospacedDigit()
+                        if showSizeHint, let hint = Format.listedHint(onDisk: item.size, apparent: item.apparentSize) {
+                            Text(hint).font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
                 }
             }
             .foregroundStyle(.secondary)

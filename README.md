@@ -36,7 +36,7 @@ Then press ⌘R. Or from the command line:
 ```sh
 xcodebuild -project Sweep.xcodeproj -scheme Sweep -configuration Debug \
   -derivedDataPath build build
-open build/Build/Products/Debug/Sweep.app
+open build/Build/Products/Debug/Scrub.app
 ```
 
 ### First run

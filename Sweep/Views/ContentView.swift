@@ -15,6 +15,14 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 460, ideal: 640)
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if store.showWhatsNewChip {
+                    WhatsNewChip(
+                        onOpen: { store.openWhatsNew() },
+                        onDismiss: { store.dismissWhatsNewChip() }
+                    )
+                }
+            }
             ToolbarItem(placement: .principal) {
                 Picker("View", selection: $store.mode) {
                     Text("Applications").tag(AppStore.Mode.apps)
@@ -62,6 +70,11 @@ struct ContentView: View {
         }
         .sheet(isPresented: $store.showingConfirmation) {
             RemovalConfirmationSheet()
+        }
+        .sheet(isPresented: $store.showingWhatsNew) {
+            if let entry = Changelog.entry(for: Preferences.currentVersion) {
+                WhatsNewView(entry: entry)
+            }
         }
         .alert("Cleanup Complete", isPresented: $store.showingOutcome, presenting: store.lastOutcome) { _ in
             Button("OK", role: .cancel) { }

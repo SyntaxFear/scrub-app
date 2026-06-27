@@ -55,8 +55,11 @@ enum AppScanner {
     /// detail view lists and totals. This is what the user actually frees by
     /// uninstalling, so it's what the sidebar shows. Expensive: it walks every
     /// related folder, so it's meant for background computation.
-    static func footprint(of app: InstalledApp) -> Int64 {
-        LeftoverScanner.scan(app: app)
-            .reduce(Int64(0)) { $0 + max(0, FileSystem.size(of: $1.url)) }
+    static func footprint(of app: InstalledApp) -> (onDisk: Int64, apparent: Int64) {
+        LeftoverScanner.scan(app: app).reduce(into: (onDisk: Int64(0), apparent: Int64(0))) { acc, item in
+            let m = FileSystem.measure(of: item.url)
+            acc.onDisk += max(0, m.onDisk)
+            acc.apparent += max(0, m.apparent)
+        }
     }
 }

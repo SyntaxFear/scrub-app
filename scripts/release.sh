@@ -89,4 +89,25 @@ xcrun stapler validate "$DMG"
 codesign --verify --deep --strict --verbose=2 "$APP"
 spctl -a -vvv -t exec "$APP"
 
+echo "▸ Updating Sparkle appcast…"
+# generate_appcast ships with the Sparkle package; it reads the private EdDSA key
+# from your login Keychain, signs each update, and writes appcast.xml next to the
+# DMGs. We host both on scrubmac.app, so we drop them into the site's public/ dir.
+# Skipped cleanly until Sparkle is set up (see docs/SPARKLE-SETUP.md).
+UPDATES_DIR="${UPDATES_DIR:-../scrub-site/public}"
+DOWNLOAD_PREFIX="${DOWNLOAD_PREFIX:-https://scrubmac.app/}"
+GENERATE_APPCAST="$(command -v generate_appcast || true)"
+if [ -z "$GENERATE_APPCAST" ] && [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
+  GENERATE_APPCAST="$SPARKLE_BIN/generate_appcast"
+fi
+if [ -n "$GENERATE_APPCAST" ] && [ -x "$GENERATE_APPCAST" ]; then
+  mkdir -p "$UPDATES_DIR"
+  cp "$DMG" "$UPDATES_DIR/"
+  "$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_PREFIX" "$UPDATES_DIR"
+  echo "✓ appcast.xml updated in $UPDATES_DIR — deploy scrub-site to publish the update."
+else
+  echo "⚠︎ Sparkle's generate_appcast not found; skipping appcast."
+  echo "  Set SPARKLE_BIN to Sparkle's bin/ once the package is added (docs/SPARKLE-SETUP.md)."
+fi
+
 echo "✓ Done: $DMG"

@@ -86,8 +86,10 @@ enum ItemCategory: String, CaseIterable, Sendable {
 }
 
 /// How sure we are an item belongs to the app. `.exact` items match the bundle
-/// identifier and are selected by default; `.likely` items match on name only
-/// and are surfaced but left for the user to confirm.
+/// identifier. `.likely` items match on the app's display name or Team ID; they
+/// carry a "likely" badge and are selected by default only when the app's
+/// identity is independently corroborated by an exact match (see
+/// `AppStore.defaultSelection(for:)`), and left unchecked otherwise.
 enum MatchConfidence: Sendable {
     case exact
     case likely
