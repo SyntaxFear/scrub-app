@@ -7,9 +7,9 @@
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 
-	<!-- Sign in with Apple: add via Xcode (target → Signing & Capabilities →
-	     + Capability → Sign in with Apple) once your Apple ID + provisioning are
-	     set up. Xcode inserts `com.apple.developer.applesignin` here and wires the
-	     profile together; adding it before provisioning breaks signing. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>
