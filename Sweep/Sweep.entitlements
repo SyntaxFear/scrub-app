@@ -6,5 +6,10 @@
 	     disabled so the app can read and remove files belonging to other apps. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+
+	<!-- Sign in with Apple: add via Xcode (target → Signing & Capabilities →
+	     + Capability → Sign in with Apple) once your Apple ID + provisioning are
+	     set up. Xcode inserts `com.apple.developer.applesignin` here and wires the
+	     profile together; adding it before provisioning breaks signing. -->
 </dict>
 </plist>

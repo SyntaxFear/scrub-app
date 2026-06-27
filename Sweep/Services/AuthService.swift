@@ -26,9 +26,11 @@ enum AuthError: Error {
 /// Google Cloud Console (see docs/AUTH-SETUP.md). Empty values disable Google
 /// sign-in gracefully.
 enum GoogleConfig {
-    static let clientID = ""      // "…apps.googleusercontent.com"
-    static let clientSecret = ""  // Desktop-client secret (not confidential for installed apps)
-    static let scheme = "com.levani.scrub"
+    // iOS-type OAuth client (PKCE, no secret). The redirect scheme is the reversed
+    // client ID, which ASWebAuthenticationSession intercepts directly.
+    static let clientID = "911024272540-tjm706j444c0mh4ejj4fbit5m7cs59pu.apps.googleusercontent.com"
+    static let clientSecret = ""  // iOS client has no secret — PKCE only
+    static let scheme = "com.googleusercontent.apps.911024272540-tjm706j444c0mh4ejj4fbit5m7cs59pu"
     static var redirectURI: String { "\(scheme):/oauth2redirect" }
     static var isConfigured: Bool { !clientID.isEmpty }
 }
@@ -133,16 +135,19 @@ final class AuthStore: NSObject {
             var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
             req.httpMethod = "POST"
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            let form = [
+            var params = [
                 "client_id": GoogleConfig.clientID,
-                "client_secret": GoogleConfig.clientSecret,
                 "code": code,
                 "code_verifier": verifier,
                 "grant_type": "authorization_code",
                 "redirect_uri": GoogleConfig.redirectURI,
             ]
-            .map { "\($0.key)=\(Self.formEncode($0.value))" }
-            .joined(separator: "&")
+            if !GoogleConfig.clientSecret.isEmpty {
+                params["client_secret"] = GoogleConfig.clientSecret
+            }
+            let form = params
+                .map { "\($0.key)=\(Self.formEncode($0.value))" }
+                .joined(separator: "&")
             req.httpBody = form.data(using: .utf8)
 
             let (data, _) = try await URLSession.shared.data(for: req)
