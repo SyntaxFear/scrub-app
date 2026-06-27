@@ -18,6 +18,9 @@ struct SidebarView: View {
                 case .leftovers: leftoverList(store)
                 }
             }
+            .transaction { transaction in
+                transaction.animation = nil
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -87,53 +90,17 @@ struct SidebarView: View {
 
 private struct ModeSwitcher: View {
     @Binding var mode: AppStore.Mode
-    @Namespace private var selection
 
     var body: some View {
-        HStack(spacing: 4) {
-            segment(.apps, title: "Applications", systemImage: "square.grid.2x2")
-            segment(.leftovers, title: "Leftovers", systemImage: "shippingbox")
+        Picker("View", selection: $mode) {
+            Label("Applications", systemImage: "square.grid.2x2")
+                .tag(AppStore.Mode.apps)
+            Label("Leftovers", systemImage: "shippingbox")
+                .tag(AppStore.Mode.leftovers)
         }
-        .padding(4)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-        }
-    }
-
-    private func segment(_ value: AppStore.Mode, title: String, systemImage: String) -> some View {
-        let selected = mode == value
-
-        return Button {
-            withAnimation(.snappy(duration: 0.18)) {
-                mode = value
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .imageScale(.small)
-                Text(title)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(selected ? Color.primary : Color.secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
-            .background {
-                if selected {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(.regularMaterial)
-                        .matchedGeometryEffect(id: "selectedMode", in: selection)
-                        .shadow(color: Color.black.opacity(0.18), radius: 5, y: 1)
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .labelsHidden()
     }
 }
 
