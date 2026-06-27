@@ -6,14 +6,20 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var store = store
 
-        Group {
-            switch store.mode {
-            case .apps:      appList(store)
-            case .leftovers: leftoverList(store)
+        VStack(spacing: 0) {
+            ModeSwitcher(mode: $store.mode)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+            Group {
+                switch store.mode {
+                case .apps:      appList(store)
+                case .leftovers: leftoverList(store)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Apps
@@ -25,7 +31,6 @@ struct SidebarView: View {
         if store.isLoadingApps && store.apps.isEmpty {
             ProgressView("Scanning Applications…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .controlSize(.small)
         } else {
             VStack(spacing: 0) {
                 SortMenu(field: $store.appSortField, ascending: $store.appSortAscending)
@@ -37,7 +42,7 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
+                .listStyle(.sidebar)
                 .onChange(of: store.selectedAppID) { _, newValue in
                     store.selectApp(newValue)
                 }
@@ -54,7 +59,6 @@ struct SidebarView: View {
         if store.isScanningLeftovers && store.leftovers.isEmpty {
             ProgressView("Looking for leftovers…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .controlSize(.small)
         } else if store.leftovers.isEmpty {
             ContentUnavailableView(
                 "No Leftovers Found",
@@ -72,12 +76,64 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
+                .listStyle(.sidebar)
                 .onChange(of: store.selectedOrphanID) { _, newValue in
                     store.selectOrphan(newValue)
                 }
             }
         }
+    }
+}
+
+private struct ModeSwitcher: View {
+    @Binding var mode: AppStore.Mode
+    @Namespace private var selection
+
+    var body: some View {
+        HStack(spacing: 4) {
+            segment(.apps, title: "Applications", systemImage: "square.grid.2x2")
+            segment(.leftovers, title: "Leftovers", systemImage: "shippingbox")
+        }
+        .padding(4)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+        }
+    }
+
+    private func segment(_ value: AppStore.Mode, title: String, systemImage: String) -> some View {
+        let selected = mode == value
+
+        return Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                mode = value
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .imageScale(.small)
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 24)
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(.regularMaterial)
+                        .matchedGeometryEffect(id: "selectedMode", in: selection)
+                        .shadow(color: Color.black.opacity(0.18), radius: 5, y: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -89,7 +145,7 @@ private struct SortMenu: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("Sort").font(.caption).foregroundStyle(.secondary)
+            Text("Sort").foregroundStyle(.secondary)
             Picker("Sort by", selection: $field) {
                 Text("Name").tag(AppStore.AppSortField.name)
                 Text("Size").tag(AppStore.AppSortField.size)
@@ -102,9 +158,13 @@ private struct SortMenu: View {
                 ascending.toggle()
             } label: {
                 Image(systemName: ascending ? "arrow.up" : "arrow.down")
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help(ascending ? "Ascending" : "Descending")
+            .accessibilityLabel("Sort direction")
+            .accessibilityValue(ascending ? "Ascending" : "Descending")
 
             Spacer()
         }
@@ -147,7 +207,7 @@ private struct LeftoverRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: "shippingbox")
+            Image(systemName: "shippingbox.fill")
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 1) {

@@ -5,6 +5,7 @@ import AppKit
 /// email-code options. Elements stagger in on appear; buttons lift on hover.
 struct AuthWallView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var email = ""
     @State private var code = ""
     @State private var codeSent = false
@@ -19,7 +20,10 @@ struct AuthWallView: View {
             content
             if auth.isBusy { busyOverlay }
         }
-        .onAppear { appeared = true }
+        .onAppear {
+            appeared = true
+            fieldFocused = true
+        }
     }
 
     // MARK: - Background
@@ -28,12 +32,12 @@ struct AuthWallView: View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             RadialGradient(
-                colors: [Color(red: 1.0, green: 0.45, blue: 0.2).opacity(0.18), .clear],
+                colors: [Color.white.opacity(0.05), .clear],
                 center: UnitPoint(x: 0.5, y: 0.18),
                 startRadius: 1, endRadius: 480
             )
             .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 1.2), value: appeared)
+            .animation(reduceMotion ? nil : .easeOut(duration: 1.2), value: appeared)
         }
         .ignoresSafeArea()
     }
@@ -46,10 +50,13 @@ struct AuthWallView: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 86, height: 86)
-                .shadow(color: Color(red: 1, green: 0.32, blue: 0.2).opacity(0.4), radius: 28, y: 12)
+                .shadow(color: Color.black.opacity(0.45), radius: 24, y: 10)
                 .opacity(appeared ? 1 : 0)
-                .scaleEffect(appeared ? 1 : 0.8)
-                .animation(.spring(response: 0.72, dampingFraction: 0.6).delay(0.05), value: appeared)
+                .scaleEffect(appeared || reduceMotion ? 1 : 0.8)
+                .animation(reduceMotion ? .easeOut(duration: 0.25)
+                                        : .spring(response: 0.72, dampingFraction: 0.6).delay(0.05),
+                           value: appeared)
+                .accessibilityHidden(true)
 
             VStack(spacing: 6) {
                 Text("Welcome to Scrub")
@@ -88,7 +95,7 @@ struct AuthWallView: View {
 
             Text("Required to use Scrub. We never read or upload what you delete.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(width: panelWidth)
                 .padding(.top, 22)
@@ -103,7 +110,7 @@ struct AuthWallView: View {
     private var emailSection: some View {
         HStack(spacing: 10) {
             divider
-            Text("or").font(.caption).foregroundStyle(.tertiary)
+            Text("or").font(.caption).foregroundStyle(.secondary)
             divider
         }
         .padding(.vertical, 2)
@@ -111,11 +118,13 @@ struct AuthWallView: View {
         if !codeSent {
             TextField("you@email.com", text: $email)
                 .textFieldStyle(.plain)
+                .textContentType(.emailAddress)
                 .font(.system(size: 14))
                 .focused($fieldFocused)
                 .padding(.horizontal, 13)
                 .frame(height: 44)
                 .background(fieldBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
                 .onSubmit(sendCode)
 
             ProviderButton(title: "Email me a code", systemImage: "envelope",
@@ -127,11 +136,14 @@ struct AuthWallView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             TextField("123456", text: $code)
                 .textFieldStyle(.plain)
+                .textContentType(.oneTimeCode)
                 .font(.system(size: 18, weight: .medium, design: .rounded))
+                .monospacedDigit()
                 .multilineTextAlignment(.center)
                 .focused($fieldFocused)
                 .frame(height: 44)
                 .background(fieldBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
                 .onSubmit(verify)
             ProviderButton(title: "Verify & continue", systemImage: "checkmark",
                            kind: .accent, disabled: code.count < 6, action: verify)
@@ -144,30 +156,37 @@ struct AuthWallView: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1)
+        Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
     }
 
     private var fieldBackground: some View {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(Color.white.opacity(0.05))
+        RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(fieldFocused ? Color.accentColor.opacity(0.8) : Color.white.opacity(0.12),
-                                  lineWidth: 1)
+                RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
+                    .strokeBorder(fieldFocused ? Color.accentColor : Color.white.opacity(0.22),
+                                  lineWidth: fieldFocused ? 1.5 : 1)
             )
             .animation(.easeOut(duration: 0.15), value: fieldFocused)
     }
 
     private var busyOverlay: some View {
         ZStack {
-            Color.black.opacity(0.08).ignoresSafeArea()
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
             ProgressView().controlSize(.large)
         }
+        // Cover and intercept hits so the provider buttons can't be tapped again
+        // while a sign-in is already in flight.
+        .contentShape(Rectangle())
     }
 
     private func sendCode() {
         guard !email.isEmpty else { return }
-        Task { codeSent = await auth.requestEmailCode(email) }
+        Task {
+            let sent = await auth.requestEmailCode(email)
+            codeSent = sent
+            if sent { fieldFocused = true }
+        }
     }
 
     private func verify() {
@@ -180,11 +199,14 @@ struct AuthWallView: View {
 private struct Reveal: ViewModifier {
     let active: Bool
     let delay: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
         content
             .opacity(active ? 1 : 0)
-            .offset(y: active ? 0 : 16)
-            .animation(.spring(response: 0.62, dampingFraction: 0.86).delay(delay), value: active)
+            .offset(y: reduceMotion ? 0 : (active ? 0 : 16))
+            .animation(reduceMotion ? .easeOut(duration: 0.25).delay(delay)
+                                    : .spring(response: 0.62, dampingFraction: 0.86).delay(delay),
+                       value: active)
     }
 }
 
@@ -205,18 +227,26 @@ private struct ProviderButton: View {
     var disabled: Bool = false
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
+    @State private var cursorPushed = false
     private var isLive: Bool { hovering && !disabled }
 
     @ViewBuilder private var iconView: some View {
         if let assetIcon {
+            // Template rendering: the logo silhouette takes the button's text color
+            // (monochrome), matching the Apple logo's treatment. Decorative — the
+            // button title carries the meaning for VoiceOver.
             Image(assetIcon)
-                .renderingMode(.original)
+                .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 17, height: 17)
+                .frame(width: 14, height: 14)
+                .accessibilityHidden(true)
         } else {
-            Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .accessibilityHidden(true)
         }
     }
 
@@ -227,25 +257,37 @@ private struct ProviderButton: View {
                 Text(title).font(.system(size: 15, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(minHeight: 44)
             .foregroundStyle(foreground)
-            .background(background)
+            .background(fill)
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
                     .strokeBorder(stroke, lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .scaleEffect(isLive ? 1.02 : 1)
-            .shadow(color: shadow, radius: isLive ? 16 : 6, y: isLive ? 6 : 3)
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+            .scaleEffect(isLive && !reduceMotion ? 1.02 : 1)
+            .shadow(color: shadowColor, radius: shadowRadius, y: shadowY)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
         .onHover { h in
             hovering = h
-            if h && !disabled { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            syncCursor(h && !disabled)
         }
+        .onDisappear { syncCursor(false) }
         .animation(.easeOut(duration: 0.16), value: hovering)
+    }
+
+    // Balanced cursor push/pop: push exactly once on hover-in, pop exactly once on
+    // hover-out or teardown. Replaces the previous unmatched pop() that corrupted the
+    // global cursor stack (disabled-hover and mid-hover teardown both leaked).
+    private func syncCursor(_ live: Bool) {
+        if live && !cursorPushed {
+            NSCursor.pointingHand.push(); cursorPushed = true
+        } else if !live && cursorPushed {
+            NSCursor.pop(); cursorPushed = false
+        }
     }
 
     private var foreground: Color {
@@ -256,33 +298,48 @@ private struct ProviderButton: View {
         }
     }
 
-    @ViewBuilder private var background: some View {
+    @ViewBuilder private var fill: some View {
         switch kind {
         case .apple:
             Color.white.opacity(isLive ? 1 : 0.95)
         case .glass:
-            Color.white.opacity(isLive ? 0.12 : 0.06)
+            // Genuine material — vibrant over the backdrop and opaque to the drop
+            // shadow (so no bleed-through halo) — with a faint hover brighten.
+            Rectangle().fill(.ultraThinMaterial)
+                .overlay(Color.white.opacity(isLive ? 0.10 : 0.04))
         case .accent:
-            LinearGradient(
-                colors: [Color(red: 1, green: 0.62, blue: 0.04), Color(red: 1, green: 0.23, blue: 0.19)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .opacity(isLive ? 1 : 0.92)
+            Color.accentColor.opacity(isLive ? 1 : 0.92)
         }
     }
 
     private var stroke: Color {
         switch kind {
-        case .glass: return Color.white.opacity(isLive ? 0.2 : 0.12)
+        case .glass: return Color.white.opacity(isLive ? 0.28 : 0.18)
         default:     return .clear
         }
     }
 
-    private var shadow: Color {
+    private var shadowColor: Color {
         switch kind {
-        case .apple:  return Color.black.opacity(0.25)
-        case .glass:  return Color.black.opacity(0.2)
-        case .accent: return Color(red: 1, green: 0.3, blue: 0.2).opacity(isLive ? 0.5 : 0.25)
+        case .apple:  return Color.black.opacity(0.22)
+        case .glass:  return Color.black.opacity(0.28)
+        case .accent: return Color.accentColor.opacity(0.4)
+        }
+    }
+
+    // Glass casts no resting shadow (it would bleed through a translucent fill); it
+    // lifts only on hover. Solid buttons keep a soft resting shadow.
+    private var shadowRadius: CGFloat {
+        switch kind {
+        case .glass: return isLive ? 9 : 0
+        default:     return isLive ? 14 : 5
+        }
+    }
+
+    private var shadowY: CGFloat {
+        switch kind {
+        case .glass: return isLive ? 4 : 0
+        default:     return isLive ? 5 : 2
         }
     }
 }

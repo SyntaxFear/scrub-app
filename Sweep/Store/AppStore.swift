@@ -29,6 +29,7 @@ final class AppStore {
     private(set) var leftovers: [OrphanGroup] = []
     private(set) var isScanningLeftovers = false
     private var hasScannedLeftovers = false
+    private var leftoverSizeToken = 0
     var selectedOrphanID: OrphanGroup.ID?
 
     // MARK: - Detail (shared by both modes)
@@ -118,12 +119,19 @@ final class AppStore {
         fullDiskAccessGranted = FullDiskAccess.isGranted()
         checkWhatsNew()
         Task { await loadApps() }
+        // TEMPORARY (user review): always show the "What's New" button in the header so
+        // the post-update discovery + open flow can be checked (the user clicks it to
+        // open the sheet). Revert to version-gated `checkWhatsNew()` before shipping.
+        showWhatsNewChip = true
     }
 
     // MARK: - What's New
 
     /// True while the post-update "What's New" chip should show by the sidebar toggle.
-    var showWhatsNewChip = false
+    /// TEMPORARY (user review): defaulted ON so the header button reliably shows even
+    /// when macOS restores the window without re-running launch logic. Revert to
+    /// `false` (version-gated) when fixing the What's New logic for production.
+    var showWhatsNewChip = true
     /// Drives the "What's New" sheet.
     var showingWhatsNew = false
 
@@ -182,7 +190,7 @@ final class AppStore {
         // fills in progressively. Bounded concurrency keeps the UI responsive
         // without hammering the disk with dozens of parallel directory walks.
         await withTaskGroup(of: (InstalledApp.ID, Int64, Int64).self) { group in
-            let maxConcurrent = 4
+            let maxConcurrent = 6
             var next = 0
             func addTask() {
                 guard next < discovered.count else { return }
@@ -279,20 +287,42 @@ final class AppStore {
             isScanningDetail = false
             isSizingDetail = true
 
-            // Compute sizes in the background and merge in.
-            let sized = await Task.detached(priority: .utility) {
-                items.map { item -> RelatedItem in
-                    var copy = item
-                    let m = FileSystem.measure(of: item.url)
-                    copy.size = m.onDisk
-                    copy.apparentSize = m.apparent
-                    return copy
-                }
-            }.value
-            guard token == detailScanToken else { return }
-            detailItems = sized.sorted(by: LeftoverScanner.ordering)
-            isSizingDetail = false
+            // Measure each item concurrently, applying every result to its row the
+            // moment it lands. A single huge folder (a multi-GB cache, say) then only
+            // keeps its own row spinning instead of blocking the entire table.
+            await measureDetailSizes(token: token)
         }
+    }
+
+    /// Sizes the current `detailItems` with bounded concurrency, merging each result
+    /// in as it completes so rows fill progressively rather than all-at-once.
+    private func measureDetailSizes(token: Int) async {
+        let urls = detailItems.map(\.url)
+        await withTaskGroup(of: (URL, Int64, Int64).self) { group in
+            let maxConcurrent = 6
+            var next = 0
+            func addTask() {
+                guard next < urls.count else { return }
+                let url = urls[next]
+                next += 1
+                group.addTask(priority: .utility) {
+                    let m = FileSystem.measure(of: url)
+                    return (url, m.onDisk, m.apparent)
+                }
+            }
+            for _ in 0..<maxConcurrent { addTask() }
+
+            for await (url, onDisk, apparent) in group {
+                if token != detailScanToken { group.cancelAll(); return }
+                if let idx = detailItems.firstIndex(where: { $0.url == url }) {
+                    detailItems[idx].size = onDisk
+                    detailItems[idx].apparentSize = apparent
+                }
+                addTask()
+            }
+        }
+        guard token == detailScanToken else { return }
+        isSizingDetail = false
     }
 
     // MARK: - Drag & drop
@@ -336,28 +366,64 @@ final class AppStore {
 
     func refreshLeftovers() async {
         isScanningLeftovers = true
-        defer { isScanningLeftovers = false }
         hasScannedLeftovers = true
+        leftoverSizeToken += 1
+        let token = leftoverSizeToken
 
         let installed = apps
-        let groups = await Task.detached(priority: .userInitiated) { () -> [OrphanGroup] in
-            let raw = OrphanScanner.scan(installed: installed)
-            return raw.map { group in
-                var copy = group
-                copy.items = group.items.map { item in
-                    var i = item
-                    let m = FileSystem.measure(of: item.url)
-                    i.size = m.onDisk
-                    i.apparentSize = m.apparent
-                    return i
-                }
-                return copy
-            }
+        // Phase 1: scan only (fast — just enumerating folders). Show the list right
+        // away instead of blocking on measuring every leftover folder first.
+        let groups = await Task.detached(priority: .userInitiated) {
+            OrphanScanner.scan(installed: installed)
         }.value
-
         leftovers = groups
+        isScanningLeftovers = false
         if selectedOrphanID == nil { selectedOrphanID = groups.first?.id }
         if let id = selectedOrphanID { selectOrphan(id) }
+
+        // Phase 2: measure every leftover concurrently, merging each size in as it
+        // lands, so group totals and the detail rows fill in progressively.
+        await sizeLeftovers(token: token)
+    }
+
+    private func sizeLeftovers(token: Int) async {
+        let urls = leftovers.flatMap { $0.items.map(\.url) }
+        await withTaskGroup(of: (URL, Int64, Int64).self) { group in
+            let maxConcurrent = 6
+            var next = 0
+            func addTask() {
+                guard next < urls.count else { return }
+                let url = urls[next]
+                next += 1
+                group.addTask(priority: .utility) {
+                    let m = FileSystem.measure(of: url)
+                    return (url, m.onDisk, m.apparent)
+                }
+            }
+            for _ in 0..<maxConcurrent { addTask() }
+
+            for await (url, onDisk, apparent) in group {
+                if token != leftoverSizeToken { group.cancelAll(); return }
+                applyLeftoverSize(url: url, onDisk: onDisk, apparent: apparent)
+                addTask()
+            }
+        }
+    }
+
+    /// Merges a measured size into the matching leftover item — and into the live
+    /// detail list too if that item's group is the one currently on screen.
+    private func applyLeftoverSize(url: URL, onDisk: Int64, apparent: Int64) {
+        for gi in leftovers.indices {
+            if let ii = leftovers[gi].items.firstIndex(where: { $0.url == url }) {
+                leftovers[gi].items[ii].size = onDisk
+                leftovers[gi].items[ii].apparentSize = apparent
+                break
+            }
+        }
+        if selectedOrphanID != nil, let di = detailItems.firstIndex(where: { $0.url == url }) {
+            detailItems[di].size = onDisk
+            detailItems[di].apparentSize = apparent
+        }
     }
 
     // MARK: - Removal
@@ -374,6 +440,15 @@ final class AppStore {
     /// confirmation sheet so the consequences stay explicit.
     func requestRemoval(of item: RelatedItem) {
         pendingRemoval = [item]
+        showingConfirmation = true
+    }
+
+    /// Requests removal of an explicit set of items (the multi-row context-menu
+    /// action), independent of the checkbox selection — so a highlight-driven delete
+    /// never clobbers what the user has ticked. Still gated by the confirmation sheet.
+    func requestRemoval(of items: [RelatedItem]) {
+        guard !items.isEmpty else { return }
+        pendingRemoval = items
         showingConfirmation = true
     }
 

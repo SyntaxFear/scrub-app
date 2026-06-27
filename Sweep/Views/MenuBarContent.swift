@@ -14,25 +14,36 @@ struct MenuBarContent: View {
     }
 
     var body: some View {
-        Button("Open Scrub") { showMainWindow() }
+        Button { showMainWindow() } label: {
+            Label("Open Scrub", systemImage: "macwindow")
+        }
 
         // Scanning and emptying the Trash are gated behind sign-in, like the main
         // window — the menu bar must not be a back door around the required wall.
         if isSignedIn {
-            Button("Scan for Apps") {
+            Button {
                 showMainWindow()
                 Task { await store.loadApps() }
+            } label: {
+                Label("Scan for Apps", systemImage: "magnifyingglass")
             }
             Divider()
-            Button("Empty Trash…") { confirmEmptyTrash() }
+            Button(role: .destructive) { confirmEmptyTrash() } label: {
+                Label("Empty Trash…", systemImage: "trash")
+            }
         }
 
-        Button("Check for Updates…") { UpdaterService.shared.checkForUpdates() }
+        Button { UpdaterService.shared.checkForUpdates() } label: {
+            Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+        }
 
         Divider()
 
-        SettingsLink { Text("Settings…") }
-        Button("Quit Scrub") { NSApp.terminate(nil) }
+        SettingsLink { Label("Settings…", systemImage: "gearshape") }
+        Button { NSApp.terminate(nil) } label: {
+            Label("Quit Scrub", systemImage: "power")
+        }
+        .keyboardShortcut("q")
     }
 
     private func showMainWindow() {

@@ -7,7 +7,6 @@ struct DetailView: View {
         Group {
             if store.isScanningDetail {
                 ProgressView("Finding related files…")
-                    .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let app = store.selectedApp {
                 detail(header: AnyView(AppHeader(app: app, total: headerTotal, apparentTotal: headerApparentTotal)))
@@ -59,20 +58,21 @@ private struct AppHeader: View {
                     if store.isSizingDetail {
                         ProgressView().controlSize(.mini)
                     } else if showSizeHint, let hint = Format.listedHint(onDisk: total, apparent: apparentTotal) {
-                        Text("· \(hint)").foregroundStyle(.tertiary)
+                        Text("· \(hint)").foregroundStyle(.secondary)
                     }
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
                 if store.isSelectedAppRunning {
                     Label("Running — it will be quit before removal", systemImage: "bolt.horizontal.circle")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.caution)
                 }
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Metrics.contentInset)
         .padding(.vertical, 16)
     }
 }
@@ -83,7 +83,7 @@ private struct OrphanHeader: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: "shippingbox.fill")
-                .font(.system(size: 38))
+                .font(.system(size: 44))
                 .foregroundStyle(.secondary)
                 .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 3) {
@@ -97,198 +97,140 @@ private struct OrphanHeader: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Metrics.contentInset)
         .padding(.vertical, 16)
     }
 }
 
 // MARK: - Items table
 
-/// The file list with a proper header row: a master checkbox, sortable Item /
-/// Kind / Size columns, and a labelled "Open" column. Built from a custom header
-/// over a `List` so the header checkbox and per-column sorting align exactly with
-/// the rows.
+/// The list of related files, as a native macOS `Table`: sortable column headers,
+/// resizable columns, native row striping / hover / selection, and a leading
+/// checkbox column that marks each item for removal. Selecting rows (highlight) is
+/// kept separate from the removal checkboxes so the destructive set stays explicit.
 private struct ItemsTable: View {
     @Environment(AppStore.self) private var store
     @AppStorage(PreferenceKey.showSizeHint) private var showSizeHint = true
 
-    enum Field { case name, kind, size }
-    @State private var sortField: Field = .kind
-    @State private var ascending = true
-
-    // Column widths shared by the header and every row, so they line up exactly.
-    private let wCheck:     CGFloat = 28
-    private let wKind:      CGFloat = 160
-    private let wSize:      CGFloat = 92
-    private let wActions:   CGFloat = 64
-    private let colSpacing: CGFloat = 10
-    private let hInset:     CGFloat = 16
-    private let vPad:       CGFloat = 7
+    @State private var sortOrder: [KeyPathComparator<RelatedItem>] = [
+        KeyPathComparator(\.category.sortOrder, order: .forward)
+    ]
+    @State private var rowSelection = Set<RelatedItem.ID>()
 
     private var rows: [RelatedItem] {
-        let items = store.detailItems
-        let sorted: [RelatedItem]
-        switch sortField {
-        case .name:
-            sorted = items.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-        case .kind:
-            sorted = items.sorted {
-                $0.category.sortOrder != $1.category.sortOrder
-                    ? $0.category.sortOrder < $1.category.sortOrder
-                    : $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-            }
-        case .size:
-            sorted = items.sorted { max(0, $0.size) < max(0, $1.size) }
-        }
-        return ascending ? sorted : sorted.reversed()
-    }
-
-    private var allSelected: Bool {
-        !store.detailItems.isEmpty && store.selectedItems.count == store.detailItems.count
+        store.detailItems.sorted(using: sortOrder)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerRow
-            Divider()
-            // A plain ScrollView (not List) so the header and rows share the
-            // exact same horizontal geometry and line up column-for-column.
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(rows) { item in
-                        row(item)
-                        Divider()
+        Table(rows, selection: $rowSelection, sortOrder: $sortOrder) {
+            TableColumn("") { item in
+                Toggle("", isOn: Binding(
+                    get: { store.detailSelection.contains(item.url) },
+                    set: { store.setItem(item.url, selected: $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .accessibilityLabel("Include \(item.displayName) in removal")
+            }
+            .width(34)
+
+            TableColumn("Item", value: \.displayName) { item in
+                HStack(spacing: 8) {
+                    CategoryGlyph(category: item.category)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.displayName).lineLimit(1)
+                        Text(item.abbreviatedPath)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                 }
             }
-        }
-    }
+            .width(min: 200, ideal: 320)
 
-    // MARK: Header
-
-    private var headerRow: some View {
-        HStack(spacing: colSpacing) {
-            Toggle("", isOn: Binding(
-                get: { allSelected },
-                set: { $0 ? store.selectAllItems() : store.deselectAllItems() }
-            ))
-            .labelsHidden()
-            .toggleStyle(.checkbox)
-            .frame(width: wCheck, alignment: .center)
-            .help(allSelected ? "Deselect all" : "Select all")
-
-            sortButton("Item", .name).frame(maxWidth: .infinity, alignment: .leading)
-            sortButton("Kind", .kind).frame(width: wKind, alignment: .leading)
-            sortButton("Size", .size).frame(width: wSize, alignment: .trailing)
-            Text("Actions").frame(width: wActions, alignment: .trailing)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, hInset)
-        .padding(.vertical, vPad)
-    }
-
-    private func sortButton(_ title: String, _ field: Field) -> some View {
-        Button {
-            if sortField == field { ascending.toggle() }
-            else { sortField = field; ascending = true }
-        } label: {
-            HStack(spacing: 3) {
-                Text(title)
-                Image(systemName: ascending ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .opacity(sortField == field ? 1 : 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: Row
-
-    private func row(_ item: RelatedItem) -> some View {
-        HStack(spacing: colSpacing) {
-            Toggle("", isOn: Binding(
-                get: { store.detailSelection.contains(item.url) },
-                set: { store.setItem(item.url, selected: $0) }
-            ))
-            .labelsHidden()
-            .frame(width: wCheck, alignment: .center)
-
-            HStack(spacing: 8) {
-                CategoryGlyph(category: item.category)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(item.displayName).lineLimit(1)
-                    Text(item.abbreviatedPath)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 6) {
-                Text(item.category.label)
-                if item.confidence == .likely {
-                    Text("likely")
-                        .font(.caption2)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                        .foregroundStyle(.secondary)
-                }
-                if item.domain == .admin {
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(.secondary)
-            .frame(width: wKind, alignment: .leading)
-
-            Group {
-                if item.size < 0 {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(Format.size(item.size)).monospacedDigit()
-                        if showSizeHint, let hint = Format.listedHint(onDisk: item.size, apparent: item.apparentSize) {
-                            Text(hint).font(.caption2).foregroundStyle(.tertiary)
-                        }
+            TableColumn("Kind", value: \.category.sortOrder) { item in
+                HStack(spacing: 6) {
+                    Text(item.category.label)
+                    if item.confidence == .likely {
+                        Text("Likely")
+                            .font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                            .help("Matched by the app's name, not its bundle identifier")
+                    }
+                    if item.vendorShared {
+                        Image(systemName: "person.2.fill")
+                            .foregroundStyle(Color.caution)
+                            .help("Shared across this vendor's apps — may still hold data for their other apps")
+                            .accessibilityLabel("Shared across this vendor's apps")
+                    }
+                    if item.domain == .admin {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(Color.caution)
+                            .help("Requires an administrator password — removed permanently, not moved to Trash")
+                            .accessibilityLabel("Requires administrator password")
                     }
                 }
+                .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.secondary)
-            .frame(width: wSize, alignment: .trailing)
+            .width(min: 110, ideal: 170)
 
-            HStack(spacing: 10) {
-                Button {
-                    Finder.reveal(item.url)
-                } label: {
-                    Image(systemName: "folder")
+            TableColumn("Size", value: \.size) { item in
+                sizeCell(item)
+            }
+            .width(min: 80, ideal: 100)
+
+            TableColumn("") { item in
+                rowActions(item)
+            }
+            .width(58)
+        }
+        .contextMenu(forSelectionType: RelatedItem.ID.self) { ids in
+            contextMenu(for: ids)
+        }
+    }
+
+    @ViewBuilder private func sizeCell(_ item: RelatedItem) -> some View {
+        if item.size < 0 {
+            // Right-aligned placeholder so the trailing edge stays put while the
+            // real value is still being measured in the background.
+            HStack { Spacer(); ProgressView().controlSize(.mini) }
+        } else {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(Format.size(item.size)).monospacedDigit()
+                if showSizeHint, let hint = Format.listedHint(onDisk: item.size, apparent: item.apparentSize) {
+                    Text(hint).font(.caption2).foregroundStyle(.secondary)
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder private func rowActions(_ item: RelatedItem) -> some View {
+        HStack(spacing: 10) {
+            Button { Finder.reveal(item.url) } label: { Image(systemName: "folder") }
                 .help("Reveal in Finder")
-
-                Button {
-                    store.requestRemoval(of: item)
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
-                }
+                .accessibilityLabel("Reveal \(item.displayName) in Finder")
+            Button { store.requestRemoval(of: item) } label: { Image(systemName: "trash") }
                 .help("Delete this item")
-            }
-            .buttonStyle(.borderless)
-            .frame(width: wActions, alignment: .trailing)
+                .accessibilityLabel("Delete \(item.displayName)")
         }
-        .padding(.horizontal, hInset)
-        .padding(.vertical, vPad)
-        .contentShape(Rectangle())
-        .contextMenu {
+        .buttonStyle(.borderless)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    @ViewBuilder private func contextMenu(for ids: Set<RelatedItem.ID>) -> some View {
+        let items = store.detailItems.filter { ids.contains($0.id) }
+        if items.count == 1, let item = items.first {
             Button("Reveal in Finder") { Finder.reveal(item.url) }
             Button("Open") { Finder.open(item.url) }
             Divider()
             Button("Delete", role: .destructive) { store.requestRemoval(of: item) }
+        } else if !items.isEmpty {
+            Button("Delete \(items.count) Items", role: .destructive) {
+                store.requestRemoval(of: items)
+            }
         }
     }
 }

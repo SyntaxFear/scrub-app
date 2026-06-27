@@ -15,22 +15,17 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 460, ideal: 640)
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                if store.showWhatsNewChip {
-                    WhatsNewChip(
-                        onOpen: { store.openWhatsNew() },
-                        onDismiss: { store.dismissWhatsNewChip() }
-                    )
+            if store.showWhatsNewChip {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        store.openWhatsNew()
+                    } label: {
+                        Label("What’s New", systemImage: "sparkles")
+                    }
+                    .help("See what’s new in this version")
                 }
             }
-            ToolbarItem(placement: .principal) {
-                Picker("View", selection: $store.mode) {
-                    Text("Applications").tag(AppStore.Mode.apps)
-                    Text("Leftovers").tag(AppStore.Mode.leftovers)
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if store.mode == .apps {
@@ -39,17 +34,23 @@ struct ContentView: View {
                         Task { await store.refreshLeftovers() }
                     }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .labelStyle(.iconOnly)
                 .help("Rescan")
+                .accessibilityLabel("Rescan")
             }
+
             ToolbarItem(placement: .primaryAction) {
                 SettingsLink {
-                    Image(systemName: "gearshape")
+                    Label("Settings", systemImage: "gearshape")
                 }
+                .labelStyle(.iconOnly)
                 .help("Settings")
+                .accessibilityLabel("Settings")
             }
         }
+        .navigationTitle("Scrub")
         .searchable(text: $store.searchText, prompt: store.mode == .apps ? "Search apps" : "Search leftovers")
         .toolbarBackground(.visible, for: .windowToolbar)
         .background(WindowAccessor())
@@ -65,8 +66,10 @@ struct ContentView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if !store.fullDiskAccessGranted {
                 FullDiskAccessBanner()
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: store.fullDiskAccessGranted)
         .dropDestination(for: URL.self) { urls, _ in
             store.handleDrop(urls: urls)
             return true
@@ -114,25 +117,33 @@ private struct WindowAccessor: NSViewRepresentable {
             guard let window = view.window else { return }
             window.isOpaque = true
             window.backgroundColor = .windowBackgroundColor
-            window.titlebarAppearsTransparent = false
+            // Persistent hairline under the toolbar so the header reads as a distinct
+            // bar separated from the content, the way first-party apps do (otherwise
+            // the unified toolbar only shows a separator while content scrolls).
+            window.titlebarSeparatorStyle = .line
         }
         return view
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Solid overlay shown while an app bundle is dragged over the window.
+/// Translucent highlight shown while an app bundle is dragged over the window.
 private struct DropOverlay: View {
     var body: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor).opacity(0.94)
+            Rectangle()
+                .fill(.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [8]))
+                .padding(16)
             VStack(spacing: 12) {
                 Image(systemName: "arrow.down.app")
-                    .font(.system(size: 46, weight: .light))
+                    .font(.system(size: 46))
+                    .accessibilityHidden(true)
                 Text("Drop an app to uninstall it")
                     .font(.title3.weight(.medium))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.accentColor)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

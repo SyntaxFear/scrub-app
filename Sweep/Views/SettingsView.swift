@@ -9,7 +9,7 @@ struct SettingsView: View {
             UpdatesSettings()
                 .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
         }
-        .frame(width: 480)
+        .frame(height: 340)
     }
 }
 
@@ -23,11 +23,15 @@ private struct GeneralSettings: View {
         Form {
             if case .signedIn(let user) = auth.state {
                 Section("Account") {
-                    LabeledContent("Signed in as", value: user.email)
-                    Button("Sign Out", role: .destructive) { auth.signOut() }
+                    LabeledContent("Signed in as") {
+                        Text(user.email)
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Sign Out") { auth.signOut() }
                 }
             }
-            Section {
+            Section("General") {
                 Toggle("Launch Scrub at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
                         LoginItem.setEnabled(enabled)
@@ -38,17 +42,15 @@ private struct GeneralSettings: View {
                 Toggle("Show listed (apparent) size as a hint", isOn: $showSizeHint)
             } footer: {
                 Text("“Listed” size is what Finder shows. Scrub’s main number is real on-disk space — what you actually free when you delete.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .scenePadding()
+        .frame(width: 460)
     }
 }
 
 private struct UpdatesSettings: View {
-    @AppStorage(PreferenceKey.automaticUpdates) private var automaticUpdates = true
+    @AppStorage(PreferenceKey.automaticUpdates) private var automaticUpdates = false
 
     var body: some View {
         Form {
@@ -59,8 +61,6 @@ private struct UpdatesSettings: View {
                     }
             } footer: {
                 Text("Updates are downloaded in the background and installed when you restart. Every update is signed, so only genuine Scrub releases can install.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             Section {
                 LabeledContent("Current version", value: Preferences.currentVersion)
@@ -70,6 +70,6 @@ private struct UpdatesSettings: View {
             }
         }
         .formStyle(.grouped)
-        .scenePadding()
+        .frame(width: 460)
     }
 }

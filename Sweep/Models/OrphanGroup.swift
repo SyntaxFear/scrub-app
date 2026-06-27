@@ -10,8 +10,14 @@ struct OrphanGroup: Identifiable, Hashable, Sendable {
     var id: String { inferredBundleID }
     var totalSize: Int64 { items.reduce(0) { $0 + max(0, $1.size) } }
 
+    // Equality includes `items` so a group whose leftover sizes change from
+    // "calculating" (-1) to real values is re-rendered by SwiftUI; `id` (the bundle
+    // ID) still gives the list a stable identity.
     static func == (lhs: OrphanGroup, rhs: OrphanGroup) -> Bool {
-        lhs.inferredBundleID == rhs.inferredBundleID
+        lhs.inferredBundleID == rhs.inferredBundleID && lhs.items == rhs.items
     }
-    func hash(into hasher: inout Hasher) { hasher.combine(inferredBundleID) }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(inferredBundleID)
+        hasher.combine(items)
+    }
 }

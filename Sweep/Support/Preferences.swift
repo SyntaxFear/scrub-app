@@ -15,11 +15,13 @@ enum PreferenceKey {
 
 enum Preferences {
 
-    /// All four user toggles ship ON. Call once at launch, before any view or
-    /// service reads a value, so unset keys resolve to these defaults.
+    /// Call once at launch, before any view or service reads a value, so unset
+    /// keys resolve to these defaults.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            PreferenceKey.automaticUpdates: true,
+            // Keep automatic checks off until the signed Sparkle appcast is live.
+            // Manual checks remain available from Settings and the menu bar.
+            PreferenceKey.automaticUpdates: false,
             PreferenceKey.showSizeHint:     true,
             PreferenceKey.launchAtLogin:    true,
             PreferenceKey.showMenuBarIcon:  true,

@@ -1,36 +1,42 @@
 import SwiftUI
 import AppKit
 
-/// A small pill shown by the sidebar toggle after an update. Clicking it opens the
-/// "What's New" sheet; the ✕ dismisses it. Either way it clears and won't return
+/// A small toolbar accessory shown after an update. Clicking it opens the
+/// "What's New" sheet; the x dismisses it. Either way it clears and won't return
 /// until the next update.
 struct WhatsNewChip: View {
     let onOpen: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Button(action: onOpen) {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "sparkles")
+                        .imageScale(.small)
                     Text("What’s New")
                 }
-                .font(.caption.weight(.semibold))
+                .font(.callout)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 4)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
+            .controlSize(.regular)
+            .accessibilityLabel("What's New")
+            .help("See what’s new in this version")
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .opacity(0.7)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .accessibilityLabel("Dismiss What's New")
+            .help("Dismiss What's New")
         }
-        .foregroundStyle(Color.accentColor)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(Color.accentColor.opacity(0.15), in: Capsule())
-        .help("See what’s new in this version")
     }
 }
 
@@ -69,11 +75,14 @@ struct WhatsNewView: View {
             }
 
             Divider()
-            Button("Continue") { dismiss() }
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
-                .padding(16)
+            HStack {
+                Spacer()
+                Button("Continue") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
         }
-        .frame(width: 460, height: 470)
+        .frame(width: 460)
+        .frame(minHeight: 360, maxHeight: 520)
     }
 }

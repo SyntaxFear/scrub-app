@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 71;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -11,17 +11,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000000015 /* Sweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000015 /* Sweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = Sweep.app; path = Scrub.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AA0000000000000000000013 /* Sweep */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			explicitFileTypes = {};
-			explicitFolders = ();
-			path = Sweep;
-			sourceTree = "<group>";
-		};
+		AA0000000000000000000013 /* Sweep */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Sweep; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,7 +100,6 @@
 			packageReferences = (
 				AA0000000000000000000030 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
-			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000012 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";

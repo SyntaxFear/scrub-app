@@ -37,7 +37,7 @@ struct RemovalConfirmationSheet: View {
                             title: "Remove permanently (requires password)",
                             subtitle: "System-level items can't go to the Trash and will be deleted for good.",
                             symbol: "lock.fill",
-                            tint: .orange,
+                            tint: .caution,
                             items: permanentItems
                         )
                     }
@@ -86,12 +86,15 @@ struct RemovalConfirmationSheet: View {
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
-                    .padding(.vertical, 5)
-                    .padding(.horizontal, 10)
-                    if item.id != items.last?.id { Divider() }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    if item.id != items.last?.id {
+                        Divider().padding(.leading, 34)
+                    }
                 }
             }
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+            .background(.quaternary.opacity(0.4),
+                        in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         }
     }
 
@@ -100,10 +103,12 @@ struct RemovalConfirmationSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { store.cancelRemoval() }
                 .keyboardShortcut(.cancelAction)
-            Button(permanentItems.isEmpty ? "Move to Trash" : "Remove") {
+            // Deliberately NOT the .defaultAction: a stray Return must never trigger
+            // an irreversible removal. The destructive role supplies the red prominent
+            // styling; the user has to click it.
+            Button(permanentItems.isEmpty ? "Move to Trash" : "Remove", role: .destructive) {
                 Task { await store.confirmRemoval() }
             }
-            .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .tint(.red)
         }

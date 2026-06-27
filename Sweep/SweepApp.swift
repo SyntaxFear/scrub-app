@@ -16,13 +16,16 @@ struct ScrubApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: ScrubWindow.main) {
+        // A single-state utility (like System Settings / Disk Utility), so a `Window`
+        // rather than a document-style `WindowGroup` — one instance, no File ▸ New.
+        Window("Scrub", id: ScrubWindow.main) {
             RootView(store: store)
                 .environment(auth)
                 .frame(minWidth: 820, minHeight: 520)
         }
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1000, height: 640)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("Refresh") {
@@ -38,7 +41,7 @@ struct ScrubApp: App {
                 .environment(auth)
         }
 
-        MenuBarExtra("Scrub", systemImage: "sparkles", isInserted: $showMenuBarIcon) {
+        MenuBarExtra("Scrub", image: "MenuBarIcon", isInserted: $showMenuBarIcon) {
             MenuBarContent(store: store, auth: auth)
         }
         .menuBarExtraStyle(.menu)
