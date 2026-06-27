@@ -43,6 +43,12 @@ struct ContentView: View {
                 }
                 .help("Rescan")
             }
+            ToolbarItem(placement: .primaryAction) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                }
+                .help("Settings")
+            }
         }
         .searchable(text: $store.searchText, prompt: store.mode == .apps ? "Search apps" : "Search leftovers")
         .toolbarBackground(.visible, for: .windowToolbar)

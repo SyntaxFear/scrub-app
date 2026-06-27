@@ -67,7 +67,7 @@ struct AuthWallView: View {
                     auth.signInWithApple()
                 }
                 if auth.googleAvailable {
-                    ProviderButton(title: "Continue with Google", systemImage: "globe", kind: .glass) {
+                    ProviderButton(title: "Continue with Google", assetIcon: "GoogleG", kind: .glass) {
                         auth.signInWithGoogle()
                     }
                 }
@@ -199,7 +199,8 @@ private extension View {
 private struct ProviderButton: View {
     enum Kind { case apple, glass, accent }
     let title: String
-    let systemImage: String
+    var systemImage: String = ""
+    var assetIcon: String? = nil
     var kind: Kind = .glass
     var disabled: Bool = false
     let action: () -> Void
@@ -207,10 +208,22 @@ private struct ProviderButton: View {
     @State private var hovering = false
     private var isLive: Bool { hovering && !disabled }
 
+    @ViewBuilder private var iconView: some View {
+        if let assetIcon {
+            Image(assetIcon)
+                .renderingMode(.original)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 17, height: 17)
+        } else {
+            Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+        }
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                iconView
                 Text(title).font(.system(size: 15, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
