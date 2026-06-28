@@ -49,7 +49,10 @@ enum CodexAssistantService {
     static func loginStatus(runtime: CodexRuntime) async -> CodexLoginMode {
         do {
             let result = try await run(runtime.executableURL, arguments: ["login", "status"])
-            let status = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let status = [result.output, result.error]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
             let lower = status.lowercased()
             if lower.contains("chatgpt") { return .chatGPT(status) }
             if lower.contains("api key") || lower.contains("apikey") { return .apiKey(status) }
@@ -60,18 +63,15 @@ enum CodexAssistantService {
     }
 
     static func launchChatGPTLogin(runtime: CodexRuntime) throws {
-        let command = "\(shellQuote(runtime.executableURL.path)) login"
-        let source = """
-        tell application "Terminal"
-          activate
-          do script "\(appleScriptEscaped(command))"
-        end tell
-        """
-        var errorInfo: NSDictionary?
-        guard let script = NSAppleScript(source: source),
-              script.executeAndReturnError(&errorInfo).stringValue != nil || errorInfo == nil else {
-            throw CodexAssistantError.processFailed("Could not open Codex login in Terminal.")
+        let commandFile = try makeLoginCommandFile(runtime: runtime)
+        if NSWorkspace.shared.open(commandFile) {
+            return
         }
+
+        throw CodexAssistantError.processFailed("""
+        Could not open Codex login. Open Terminal and run:
+        \(shellQuote(runtime.executableURL.path)) login
+        """)
     }
 
     static func ask(question: String, context: AssistantContext, runtime: CodexRuntime) async throws -> String {
@@ -135,14 +135,40 @@ enum CodexAssistantService {
         return url
     }
 
-    private static func shellQuote(_ string: String) -> String {
-        "'\(string.replacingOccurrences(of: "'", with: "'\\''"))'"
+    private static func makeLoginCommandFile(runtime: CodexRuntime) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScrubCodexAssistantLogin", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let url = directory.appendingPathComponent("connect-chatgpt-\(UUID().uuidString).command")
+        let script = """
+        #!/bin/zsh
+        printf '\\033]0;Scrub ChatGPT Login\\007'
+        clear
+        echo "Scrub uses Codex to connect your ChatGPT subscription."
+        echo "A browser window may open so you can finish signing in."
+        echo
+        \(shellQuote(runtime.executableURL.path)) login
+        status=$?
+        echo
+        if [ "$status" -eq 0 ]; then
+          echo "Done. Return to Scrub and click Check Connection."
+        else
+          echo "Codex login exited with status $status."
+        fi
+        echo
+        echo "You can close this window."
+        read -k 1 "?Press any key to close."
+        exit "$status"
+        """
+
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        return url
     }
 
-    private static func appleScriptEscaped(_ string: String) -> String {
-        string
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+    private static func shellQuote(_ string: String) -> String {
+        "'\(string.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     private static func run(_ executable: URL,
