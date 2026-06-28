@@ -1,6 +1,7 @@
 import SwiftUI
+import AppKit
 
-/// The ⌘, Settings window: General + Updates tabs.
+/// The ⌘, Settings window: General + Updates + About tabs.
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -8,8 +9,10 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             UpdatesSettings()
                 .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
+            AboutSettings()
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(height: 420)
+        .frame(height: 440)
     }
 }
 
@@ -93,6 +96,67 @@ private struct UpdatesSettings: View {
                 Button("Check for Updates…") {
                     UpdaterService.shared.checkForUpdates()
                 }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 460)
+    }
+}
+
+private struct AboutSettings: View {
+    private var bundleIdentifier: String {
+        Bundle.main.bundleIdentifier ?? "com.levani.Scrub"
+    }
+
+    private var releaseEntry: ChangelogEntry? {
+        Changelog.entry(for: Preferences.currentVersion)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 82, height: 82)
+                        .accessibilityHidden(true)
+
+                    VStack(spacing: 3) {
+                        Text("Scrub")
+                            .font(.title2.weight(.semibold))
+                        Text("A careful macOS uninstaller")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+
+            Section("Version") {
+                LabeledContent("Current version", value: Preferences.currentVersion)
+                LabeledContent("Build", value: Preferences.currentBuild)
+                if let releaseEntry {
+                    LabeledContent("Released", value: releaseEntry.date)
+                    LabeledContent("Requires macOS", value: releaseEntry.minimumMacOS)
+                }
+            }
+
+            Section("Links") {
+                LabeledContent("Website") {
+                    Link("scrubmac.app", destination: Preferences.websiteURL)
+                }
+                LabeledContent("Contact") {
+                    Link(Preferences.contactEmail, destination: URL(string: "mailto:\(Preferences.contactEmail)")!)
+                }
+                LabeledContent("GitHub") {
+                    Link("SyntaxFear/scrub-app", destination: Preferences.githubURL)
+                }
+            }
+
+            Section("App") {
+                LabeledContent("Bundle ID", value: bundleIdentifier)
             }
         }
         .formStyle(.grouped)

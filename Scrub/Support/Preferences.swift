@@ -14,6 +14,9 @@ enum PreferenceKey {
 }
 
 enum Preferences {
+    static let websiteURL = URL(string: "https://scrubmac.app")!
+    static let contactEmail = "hello@scrubmac.app"
+    static let githubURL = URL(string: "https://github.com/SyntaxFear/scrub-app")!
 
     /// Call once at launch, before any view or service reads a value, so unset
     /// keys resolve to these defaults.
@@ -41,5 +44,10 @@ enum Preferences {
     /// The running app's short version string (CFBundleShortVersionString), e.g. "1.1".
     static var currentVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0"
+    }
+
+    /// The running app's build string (CFBundleVersion).
+    static var currentBuild: String {
+        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "1"
     }
 }
