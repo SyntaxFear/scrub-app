@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.2",
+      "build": "3",
+      "date": "2026-06-28",
+      "minimumMacOS": "14.0",
+      "highlights": [
+        "Fixed ChatGPT assistant streaming so answers appear reliably instead of getting stuck on Thinking.",
+        "Separated What's New from the AI Assistant action and added a clean Settings About tab.",
+        "Added public project links for the website, contact email, and GitHub repository."
+      ],
+      "sha256": "bf38a1d751b2c93c7bd9cec6d1fa06ed9633104246fc255ddc71ca6812611de2",
+      "fileSize": 4088211,
+      "latestPath": "/Scrub.dmg",
+      "archivePath": "/releases/Scrub-1.2.dmg"
+    },
+    {
       "version": "1.1",
       "build": "1",
       "date": "2026-06-28",

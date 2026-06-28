@@ -46,6 +46,21 @@ enum Changelog {
 
     private static let fallbackEntries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.2",
+            build: "3",
+            date: "2026-06-28",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Fixed ChatGPT assistant streaming so answers appear reliably instead of getting stuck on Thinking.",
+                "Separated What's New from the AI Assistant action and added a clean Settings About tab.",
+                "Added public project links for the website, contact email, and GitHub repository.",
+            ],
+            sha256: "",
+            fileSize: 0,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.2.dmg"
+        ),
+        ChangelogEntry(
             version: "1.1",
             build: "1",
             date: "2026-06-28",
@@ -55,8 +70,8 @@ enum Changelog {
                 "Added a ChatGPT/Codex cleanup assistant for read-only, metadata-only recommendations.",
                 "Added an assistant drawer with app, leftover, and row-level Ask actions.",
             ],
-            sha256: "d961de42a75a44263763f7c66516d89fe43f244f1f268c6f539cd5925d2ec1f9",
-            fileSize: 2_567_829,
+            sha256: "4c529c3a9e2aaf504098ae32cd7e982268f32671f1cada33d633b96159423f62",
+            fileSize: 4_039_915,
             latestPath: "/Scrub.dmg",
             archivePath: "/releases/Scrub-1.1.dmg"
         ),
