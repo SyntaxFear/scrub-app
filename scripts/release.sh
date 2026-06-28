@@ -37,6 +37,9 @@ EXPORT_DIR="$BUILD_DIR/export"
 APP="$EXPORT_DIR/Scrub.app"
 VERSIONED_DMG=""
 LATEST_DMG="$BUILD_DIR/Scrub.dmg"
+DMG_STAGE="$BUILD_DIR/dmg-stage"
+DMG_RW="$BUILD_DIR/Scrub-rw.dmg"
+DMG_MOUNT=""
 MANIFEST_PATH="${MANIFEST_PATH:-Scrub/Releases.json}"
 SITE_DIR="${SITE_DIR:-../scrub-site}"
 
@@ -75,8 +78,47 @@ APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/
 MINIMUM_MACOS="${MINIMUM_MACOS:-14.0}"
 VERSIONED_DMG="$BUILD_DIR/Scrub-${APP_VERSION}.dmg"
 
-echo "▸ Packaging DMG…"
-hdiutil create -volname "Scrub" -srcfolder "$APP" -ov -format UDZO "$VERSIONED_DMG" >/dev/null
+echo "▸ Packaging drag-to-Applications DMG…"
+if mount | grep -q " on /Volumes/Scrub "; then
+  hdiutil detach "/Volumes/Scrub" -quiet || true
+fi
+rm -rf "$DMG_STAGE" "$DMG_RW" "$VERSIONED_DMG"
+mkdir -p "$DMG_STAGE"
+ditto "$APP" "$DMG_STAGE/Scrub.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+
+hdiutil create -volname "Scrub" -srcfolder "$DMG_STAGE" -ov -format UDRW -fs APFS "$DMG_RW" >/dev/null
+ATTACH_OUTPUT="$(hdiutil attach "$DMG_RW" -noverify -noautoopen)"
+DMG_MOUNT="$(printf "%s\n" "$ATTACH_OUTPUT" | awk '/\/Volumes\/Scrub/ { print $NF; exit }')"
+if [ -z "$DMG_MOUNT" ]; then
+  echo "$ATTACH_OUTPUT" >&2
+  echo "✗ Could not find mounted Scrub volume." >&2
+  exit 1
+fi
+
+# Persist a familiar Finder install window: Scrub.app on the left and the
+# Applications shortcut on the right. If Finder scripting is unavailable, the
+# DMG still contains the correct drag-to-Applications contents.
+osascript <<'APPLESCRIPT' || true
+tell application "Finder"
+    tell disk "Scrub"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set bounds of container window to {120, 120, 640, 410}
+        set arrangement of icon view options of container window to not arranged
+        set icon size of icon view options of container window to 96
+        set position of item "Scrub.app" of container window to {160, 145}
+        set position of item "Applications" of container window to {400, 145}
+        close
+    end tell
+end tell
+APPLESCRIPT
+
+sync
+hdiutil detach "$DMG_MOUNT" -quiet
+hdiutil convert "$DMG_RW" -format UDZO -imagekey zlib-level=9 -o "$VERSIONED_DMG" >/dev/null
 
 echo "▸ Signing the DMG with Developer ID…"
 # Sign the disk image itself (not just the app inside) so Gatekeeper accepts the

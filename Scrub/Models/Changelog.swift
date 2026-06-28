@@ -46,6 +46,21 @@ enum Changelog {
 
     private static let fallbackEntries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.4",
+            build: "5",
+            date: "2026-06-28",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Installer DMGs now open with a familiar drag-to-Applications layout.",
+                "Added an Applications shortcut inside the DMG so installation is clearer.",
+                "Kept the signed, notarized direct download and Sparkle update flow intact.",
+            ],
+            sha256: "",
+            fileSize: 0,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.4.dmg"
+        ),
+        ChangelogEntry(
             version: "1.3",
             build: "4",
             date: "2026-06-28",
