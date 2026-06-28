@@ -187,12 +187,13 @@ enum CodexAssistantService {
         stdin.fileHandleForWriting.closeFile()
 
         let stderrTask = Task {
-            do {
-                for try await line in stderr.fileHandleForReading.bytes.lines {
-                    await stderrLog.append(line)
+            let handle = stderr.fileHandleForReading
+            while !Task.isCancelled {
+                let data = handle.availableData
+                guard !data.isEmpty else { break }
+                if let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty {
+                    await stderrLog.append(chunk)
                 }
-            } catch {
-                await stderrLog.append(error.localizedDescription)
             }
         }
 
