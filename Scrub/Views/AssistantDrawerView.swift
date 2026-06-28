@@ -89,42 +89,51 @@ struct AssistantDrawerView: View {
     }
 
     private var messages: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if assistant.messages.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Ask about the selected app, leftover group, or a specific row.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        ForEach(suggestions, id: \.self) { suggestion in
-                            Button {
-                                Task { await send(suggestion) }
-                            } label: {
-                                Text(suggestion)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if assistant.messages.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Ask about the selected app, leftover group, or a specific row.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            ForEach(suggestions, id: \.self) { suggestion in
+                                Button {
+                                    Task { await send(suggestion) }
+                                } label: {
+                                    Text(suggestion)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(!assistant.connectionState.isConnected || store.assistantContext(focusedItem: focusedItem) == nil)
                             }
-                            .buttonStyle(.borderless)
-                            .disabled(!assistant.connectionState.isConnected || store.assistantContext(focusedItem: focusedItem) == nil)
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
-                }
 
-                ForEach(assistant.messages) { message in
-                    MessageBubble(message: message)
-                }
-
-                if assistant.isAsking {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Thinking…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    ForEach(assistant.messages) { message in
+                        MessageBubble(message: message)
+                            .id(message.id)
                     }
-                    .padding(.top, 4)
+
+                    if assistant.isAsking && !assistant.messages.contains(where: { $0.isStreaming }) {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Thinking…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(14)
+            }
+            .onChange(of: assistant.messages) { _, messages in
+                guard let id = messages.last?.id else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(id, anchor: .bottom)
                 }
             }
-            .padding(14)
         }
     }
 
@@ -186,10 +195,19 @@ private struct MessageBubble: View {
             Text(message.role == .user ? "You" : "Assistant")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(message.text)
-                .font(.callout)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            if message.text.isEmpty && message.isStreaming {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Thinking…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text(message.text)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

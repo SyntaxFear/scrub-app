@@ -33,9 +33,17 @@ enum AssistantConnectionState: Equatable {
 
 struct AssistantMessage: Identifiable, Equatable {
     enum Role { case user, assistant }
-    let id = UUID()
+    let id: UUID
     let role: Role
-    let text: String
+    var text: String
+    var isStreaming: Bool
+
+    init(id: UUID = UUID(), role: Role, text: String, isStreaming: Bool = false) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.isStreaming = isStreaming
+    }
 }
 
 @MainActor
@@ -104,7 +112,7 @@ final class AssistantStore {
         case .apiKey, .signedOut:
             do {
                 try CodexAssistantService.launchChatGPTLogin(runtime: found)
-                connectionState = .needsLogin("Complete ChatGPT sign-in in Terminal, then check connection.")
+                connectionState = .needsLogin("Complete ChatGPT sign-in, then check connection.")
             } catch {
                 connectionState = .error(error.localizedDescription)
             }
@@ -133,13 +141,38 @@ final class AssistantStore {
 
         isAsking = true
         messages.append(.init(role: .user, text: question))
+        let responseID = UUID()
+        let streamTarget = self
+        messages.append(.init(id: responseID, role: .assistant, text: "", isStreaming: true))
         defer { isAsking = false }
 
         do {
-            let answer = try await CodexAssistantService.ask(question: question, context: context, runtime: runtime)
-            messages.append(.init(role: .assistant, text: answer))
+            let answer = try await CodexAssistantService.askStreaming(
+                question: question,
+                context: context,
+                runtime: runtime
+            ) { delta in
+                await MainActor.run {
+                    streamTarget.append(delta, to: responseID)
+                }
+            }
+            replaceStreamingMessage(responseID, with: answer)
         } catch {
-            messages.append(.init(role: .assistant, text: error.localizedDescription))
+            replaceStreamingMessage(responseID, with: error.localizedDescription)
         }
+    }
+
+    private func append(_ delta: String, to messageID: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        messages[index].text += delta
+    }
+
+    private func replaceStreamingMessage(_ messageID: UUID, with text: String) {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else {
+            messages.append(.init(role: .assistant, text: text))
+            return
+        }
+        messages[index].text = text
+        messages[index].isStreaming = false
     }
 }
