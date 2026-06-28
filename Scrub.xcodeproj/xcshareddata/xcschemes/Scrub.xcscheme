@@ -16,8 +16,8 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AA0000000000000000000014"
                BuildableName = "Scrub.app"
-               BlueprintName = "Sweep"
-               ReferencedContainer = "container:Sweep.xcodeproj">
+               BlueprintName = "Scrub"
+               ReferencedContainer = "container:Scrub.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,8 +46,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000014"
             BuildableName = "Scrub.app"
-            BlueprintName = "Sweep"
-            ReferencedContainer = "container:Sweep.xcodeproj">
+            BlueprintName = "Scrub"
+            ReferencedContainer = "container:Scrub.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -63,8 +63,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000014"
             BuildableName = "Scrub.app"
-            BlueprintName = "Sweep"
-            ReferencedContainer = "container:Sweep.xcodeproj">
+            BlueprintName = "Scrub"
+            ReferencedContainer = "container:Scrub.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

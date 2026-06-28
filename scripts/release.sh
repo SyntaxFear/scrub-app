@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build, sign, notarize, and package Sweep for distribution outside the App Store.
+# Build, sign, notarize, and package Scrub for distribution outside the App Store.
 #
 # Prerequisites (one-time):
 #   1. A "Developer ID Application" certificate in your login keychain.
@@ -17,21 +17,19 @@
 #
 # Optional env overrides:
 #   SIGN_IDENTITY   default: "Developer ID Application"  (matched by name)
-#   NOTARY_PROFILE  default: "Sweep"
-#   SCHEME          default: "Sweep"
+#   NOTARY_PROFILE  default: "Scrub"
+#   SCHEME          default: "Scrub"
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SCHEME="${SCHEME:-Sweep}"
+SCHEME="${SCHEME:-Scrub}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-Scrub}"
 : "${TEAM_ID:?Set TEAM_ID to your 10-character Apple Developer Team ID}"
 
 BUILD_DIR="build/release"
-# Xcode project/scheme are named "Sweep", but the product is "Scrub"
-# (PRODUCT_NAME = Scrub), so the exported app and DMG are named Scrub.
 ARCHIVE="$BUILD_DIR/Scrub.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 APP="$EXPORT_DIR/Scrub.app"
@@ -41,7 +39,7 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 echo "▸ Archiving (Release, Developer ID, hardened runtime)…"
-xcodebuild -project Sweep.xcodeproj -scheme "$SCHEME" -configuration Release \
+xcodebuild -project Scrub.xcodeproj -scheme "$SCHEME" -configuration Release \
   -archivePath "$ARCHIVE" \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \

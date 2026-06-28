@@ -1,6 +1,9 @@
 # Build output
 build/
 DerivedData/
+node_modules/
+.next/
+.vercel/
 *.xcuserstate
 
 # Xcode user data
