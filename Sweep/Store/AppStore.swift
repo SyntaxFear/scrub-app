@@ -119,19 +119,12 @@ final class AppStore {
         fullDiskAccessGranted = FullDiskAccess.isGranted()
         checkWhatsNew()
         Task { await loadApps() }
-        // TEMPORARY (user review): always show the "What's New" button in the header so
-        // the post-update discovery + open flow can be checked (the user clicks it to
-        // open the sheet). Revert to version-gated `checkWhatsNew()` before shipping.
-        showWhatsNewChip = true
     }
 
     // MARK: - What's New
 
-    /// True while the post-update "What's New" chip should show by the sidebar toggle.
-    /// TEMPORARY (user review): defaulted ON so the header button reliably shows even
-    /// when macOS restores the window without re-running launch logic. Revert to
-    /// `false` (version-gated) when fixing the What's New logic for production.
-    var showWhatsNewChip = true
+    /// True while the post-update "What's New" chip should show.
+    var showWhatsNewChip = false
     /// Drives the "What's New" sheet.
     var showingWhatsNew = false
 
@@ -144,6 +137,7 @@ final class AppStore {
             showWhatsNewChip = (last != current) && haveNotesForCurrent
         } else {
             Preferences.lastSeenVersion = current
+            showWhatsNewChip = false
         }
     }
 
