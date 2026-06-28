@@ -2,6 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Scrub Apple Sign In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.levani.scrub.auth</string>
+			</array>
+		</dict>
+	</array>
 	<!-- Sparkle auto-update. The public key verifies update signatures; the
 	     matching private key lives in the login Keychain (back it up offline). -->
 	<key>SUFeedURL</key>

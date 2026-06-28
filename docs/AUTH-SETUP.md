@@ -26,18 +26,25 @@ All verify tokens/codes server-side. Tested: bad token → 401, missing field �
    (Until set, `/native/auth/google` returns 503 and the Google button is hidden.)
 
 ## 2. Sign in with Apple
-1. developer.apple.com → Identifiers → App ID `com.levani.Scrub` → ensure
-   **Sign in with Apple** is enabled (the web Services ID already uses it).
-2. Add the entitlement to `Scrub/Scrub.entitlements`:
-   ```xml
-   <key>com.apple.developer.applesignin</key>
-   <array><string>Default</string></array>
-   ```
-   (Left out for now so the ad-hoc Debug build keeps working without provisioning.)
-3. For Developer ID distribution, create/download a provisioning profile that
-   includes the Sign in with Apple capability and embed it in the app
-   (`PROVISIONING_PROFILE_SPECIFIER`). The backend already expects `aud` =
-   `com.levani.Scrub`.
+The shipped Developer ID build uses Apple's web OAuth flow, not the native
+`ASAuthorizationAppleIDProvider` token flow. Native Sign in with Apple requires a
+Developer ID provisioning profile with the Apple Sign In capability; until that
+exists, the direct-download DMG must use the Services ID route.
+
+Required production settings:
+1. Apple Developer → Services ID `app.scrubmac.web`.
+2. Return URL registered in Apple Developer:
+   `https://scrubmac.app/api/auth/callback/apple`.
+3. Convex prod env:
+   `AUTH_APPLE_ID=app.scrubmac.web` and a valid `AUTH_APPLE_SECRET` client-secret
+   JWT for the same Services ID.
+
+Runtime flow:
+1. Scrub opens `https://appleid.apple.com/auth/authorize`.
+2. Apple redirects to `https://scrubmac.app/api/auth/callback/apple`.
+3. The site redirects back to Scrub with `com.levani.scrub.auth:/apple/callback`.
+4. Scrub sends the authorization code to `/native/auth/apple-code`.
+5. Convex exchanges the code server-side and verifies the returned Apple ID token.
 
 ## 3. Email codes
 Already wired (`/native/auth/email/request` + `/verify`, SES, hashed codes,

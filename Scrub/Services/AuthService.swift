@@ -35,6 +35,15 @@ enum GoogleConfig {
     static var isConfigured: Bool { !clientID.isEmpty }
 }
 
+/// Sign in with Apple for the Developer ID build uses Apple's web OAuth Services
+/// ID, because native Apple Sign In requires a Developer ID provisioning profile.
+enum AppleConfig {
+    static let serviceID = "app.scrubmac.web"
+    static let scheme = "com.levani.scrub.auth"
+    static let redirectURI = "https://scrubmac.app/api/auth/callback/apple"
+    static var isConfigured: Bool { !serviceID.isEmpty }
+}
+
 /// Drives the required sign-in wall and talks to the Convex native-auth endpoints.
 /// All token/code verification happens server-side; the app only ever holds an
 /// opaque session token (in the Keychain).
@@ -83,12 +92,54 @@ final class AuthStore: NSObject {
 
     func signInWithApple() {
         errorMessage = nil
-        let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.fullName, .email]
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = self
-        controller.presentationContextProvider = self
-        controller.performRequests()
+        guard AppleConfig.isConfigured else {
+            errorMessage = "Apple sign-in isn’t set up yet."
+            return
+        }
+
+        let state = Self.randomURLSafe(32)
+        var comps = URLComponents(string: "https://appleid.apple.com/auth/authorize")!
+        comps.queryItems = [
+            .init(name: "client_id", value: AppleConfig.serviceID),
+            .init(name: "redirect_uri", value: AppleConfig.redirectURI),
+            .init(name: "response_type", value: "code"),
+            .init(name: "response_mode", value: "query"),
+            .init(name: "scope", value: "name email"),
+            .init(name: "state", value: state),
+        ]
+
+        let session = ASWebAuthenticationSession(
+            url: comps.url!, callbackURLScheme: AppleConfig.scheme
+        ) { [weak self] callback, error in
+            guard let self else { return }
+            if let error = error as? NSError {
+                if error.code != ASAuthorizationError.canceled.rawValue {
+                    Task { @MainActor in self.errorMessage = self.appleSignInMessage(for: error) }
+                }
+                return
+            }
+
+            guard let callback,
+                  let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems else {
+                Task { @MainActor in self.errorMessage = "Apple sign-in did not return a callback." }
+                return
+            }
+            if let appleError = items.first(where: { $0.name == "error" })?.value {
+                Task { @MainActor in self.errorMessage = "Apple sign-in failed: \(appleError)." }
+                return
+            }
+            guard items.first(where: { $0.name == "state" })?.value == state,
+                  let code = items.first(where: { $0.name == "code" })?.value,
+                  !code.isEmpty else {
+                Task { @MainActor in self.errorMessage = "Apple sign-in returned an invalid response." }
+                return
+            }
+            Task { await self.exchangeApple(code: code) }
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = false
+        webSession = session
+        session.start()
     }
 
     // MARK: - Sign in with Google (PKCE)
@@ -159,6 +210,17 @@ final class AuthStore: NSObject {
             try handleAuth(result)
         } catch {
             errorMessage = (error as? AuthError)?.message ?? "Google sign-in failed."
+        }
+    }
+
+    private func exchangeApple(code: String) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let result = try await post("apple-code", ["code": code])
+            try handleAuth(result)
+        } catch {
+            errorMessage = (error as? AuthError)?.message ?? "Apple sign-in failed."
         }
     }
 
@@ -271,8 +333,9 @@ extension AuthStore: ASAuthorizationControllerDelegate, ASAuthorizationControlle
     func authorizationController(controller: ASAuthorizationController,
                                  didCompleteWithError error: Error) {
         // Cancellation is silent; other failures surface a message.
-        if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-            errorMessage = "Apple sign-in failed."
+        let nsError = error as NSError
+        if nsError.code != ASAuthorizationError.canceled.rawValue {
+            errorMessage = appleSignInMessage(for: nsError)
         }
     }
 
@@ -290,5 +353,24 @@ extension AuthStore: ASWebAuthenticationPresentationContextProviding {
 private extension AuthStore {
     func anchor() -> ASPresentationAnchor {
         NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
+    }
+
+    func appleSignInMessage(for error: NSError) -> String {
+        let details = error.localizedDescription
+        let suffix = details.isEmpty ? "" : " \(details)"
+        switch ASAuthorizationError.Code(rawValue: error.code) {
+        case .failed:
+            return "Apple sign-in failed. Make sure Scrub was installed from the latest signed DMG and try again.\(suffix)"
+        case .invalidResponse:
+            return "Apple sign-in returned an invalid response. Please try again.\(suffix)"
+        case .notHandled:
+            return "Apple sign-in could not be handled on this Mac. Check that you are signed into your Apple Account in System Settings.\(suffix)"
+        case .notInteractive:
+            return "Apple sign-in needs an interactive window. Bring Scrub to the front and try again.\(suffix)"
+        case .unknown:
+            return "Apple sign-in failed because macOS returned an unknown authorization error.\(suffix)"
+        default:
+            return "Apple sign-in failed.\(suffix)"
+        }
     }
 }
