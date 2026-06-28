@@ -123,7 +123,7 @@ final class AuthStore: NSObject {
             Task { await self.exchangeGoogle(code: code, verifier: verifier) }
         }
         session.presentationContextProvider = self
-        session.prefersEphemeralWebBrowserSession = true
+        session.prefersEphemeralWebBrowserSession = false
         webSession = session
         session.start()
     }
