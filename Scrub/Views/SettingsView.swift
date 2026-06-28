@@ -79,7 +79,7 @@ private struct GeneralSettings: View {
 }
 
 private struct UpdatesSettings: View {
-    @AppStorage(PreferenceKey.automaticUpdates) private var automaticUpdates = false
+    @AppStorage(PreferenceKey.automaticUpdates) private var automaticUpdates = true
 
     var body: some View {
         Form {
@@ -104,10 +104,6 @@ private struct UpdatesSettings: View {
 }
 
 private struct AboutSettings: View {
-    private var bundleIdentifier: String {
-        Bundle.main.bundleIdentifier ?? "com.levani.Scrub"
-    }
-
     private var releaseEntry: ChangelogEntry? {
         Changelog.entry(for: Preferences.currentVersion)
     }
@@ -155,9 +151,6 @@ private struct AboutSettings: View {
                 }
             }
 
-            Section("App") {
-                LabeledContent("Bundle ID", value: bundleIdentifier)
-            }
         }
         .formStyle(.grouped)
         .frame(width: 460)

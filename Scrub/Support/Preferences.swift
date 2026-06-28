@@ -22,9 +22,9 @@ enum Preferences {
     /// keys resolve to these defaults.
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            // Keep automatic checks off until the signed Sparkle appcast is live.
-            // Manual checks remain available from Settings and the menu bar.
-            PreferenceKey.automaticUpdates: false,
+            // The signed Sparkle appcast is live, so new installs should keep
+            // themselves current without requiring a manual check.
+            PreferenceKey.automaticUpdates: true,
             PreferenceKey.showSizeHint:     true,
             PreferenceKey.launchAtLogin:    true,
             PreferenceKey.showMenuBarIcon:  true,

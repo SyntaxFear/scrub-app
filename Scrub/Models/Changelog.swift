@@ -46,6 +46,21 @@ enum Changelog {
 
     private static let fallbackEntries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.3",
+            build: "4",
+            date: "2026-06-28",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Automatic updates are now enabled by default for new installs.",
+                "Cleaned up the Settings About tab by removing the internal bundle identifier.",
+                "Refreshed the signed latest download for the landing site and updater.",
+            ],
+            sha256: "",
+            fileSize: 0,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.3.dmg"
+        ),
+        ChangelogEntry(
             version: "1.2",
             build: "3",
             date: "2026-06-28",
