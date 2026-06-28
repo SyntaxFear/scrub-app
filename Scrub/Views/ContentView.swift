@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppStore.self) private var store
+    @Environment(AssistantStore.self) private var assistant
     @State private var isDropTargeted = false
 
     var body: some View {
@@ -24,6 +25,17 @@ struct ContentView: View {
                     }
                     .help("See what’s new in this version")
                 }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    assistant.open()
+                } label: {
+                    Label("AI Assistant", systemImage: "sparkles")
+                }
+                .labelStyle(.iconOnly)
+                .help("AI Assistant")
+                .accessibilityLabel("AI Assistant")
             }
 
             ToolbarItem(placement: .primaryAction) {

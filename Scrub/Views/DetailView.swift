@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DetailView: View {
     @Environment(AppStore.self) private var store
+    @Environment(AssistantStore.self) private var assistant
 
     var body: some View {
         Group {
@@ -29,13 +30,20 @@ struct DetailView: View {
     // MARK: - Shared detail body
 
     private func detail(header: AnyView) -> some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            ItemsTable()
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                header
+                Divider()
+                ItemsTable()
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .safeAreaInset(edge: .bottom, spacing: 0) { RemovalFooter() }
+
+            if assistant.isDrawerVisible {
+                Divider()
+                AssistantDrawerView()
+            }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .safeAreaInset(edge: .bottom, spacing: 0) { RemovalFooter() }
     }
 }
 
@@ -110,6 +118,7 @@ private struct OrphanHeader: View {
 /// kept separate from the removal checkboxes so the destructive set stays explicit.
 private struct ItemsTable: View {
     @Environment(AppStore.self) private var store
+    @Environment(AssistantStore.self) private var assistant
     @AppStorage(PreferenceKey.showSizeHint) private var showSizeHint = true
 
     @State private var sortOrder: [KeyPathComparator<RelatedItem>] = [
@@ -209,6 +218,11 @@ private struct ItemsTable: View {
 
     @ViewBuilder private func rowActions(_ item: RelatedItem) -> some View {
         HStack(spacing: 10) {
+            Button {
+                assistant.open(focusedItem: item)
+            } label: { Image(systemName: "sparkles") }
+                .help("Ask AI about this item")
+                .accessibilityLabel("Ask AI about \(item.displayName)")
             Button { Finder.reveal(item.url) } label: { Image(systemName: "folder") }
                 .help("Reveal in Finder")
                 .accessibilityLabel("Reveal \(item.displayName) in Finder")

@@ -9,12 +9,13 @@ struct SettingsView: View {
             UpdatesSettings()
                 .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
         }
-        .frame(height: 340)
+        .frame(height: 420)
     }
 }
 
 private struct GeneralSettings: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(AssistantStore.self) private var assistant
     @AppStorage(PreferenceKey.launchAtLogin) private var launchAtLogin = true
     @AppStorage(PreferenceKey.showMenuBarIcon) private var showMenuBarIcon = true
     @AppStorage(PreferenceKey.showSizeHint) private var showSizeHint = true
@@ -29,6 +30,30 @@ private struct GeneralSettings: View {
                             .foregroundStyle(.secondary)
                     }
                     Button("Sign Out") { auth.signOut() }
+                }
+
+                Section {
+                    LabeledContent("ChatGPT") {
+                        Text(assistant.connectionState.label)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    HStack {
+                        if assistant.connectionState.isConnected {
+                            Button("Disconnect") { assistant.disconnect() }
+                        } else {
+                            Button("Connect ChatGPT") {
+                                Task { await assistant.connect() }
+                            }
+                            Button("Check Connection") {
+                                Task { await assistant.refreshConnection() }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("AI Assistant")
+                } footer: {
+                    Text("When you ask the assistant, Scrub sends only cleanup metadata such as app names, bundle IDs, paths, categories, sizes, and match confidence.")
                 }
             }
             Section("General") {
@@ -46,6 +71,7 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .frame(width: 460)
+        .task { await assistant.refreshConnection() }
     }
 }
 

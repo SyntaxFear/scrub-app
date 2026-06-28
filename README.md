@@ -116,6 +116,10 @@ The cleanup scan does not need to upload your app list or file list to a server.
 Sign-in uses Scrub's online sign-in service, and your Scrub session token is
 stored in the macOS Keychain.
 
+If you connect ChatGPT/Codex and ask the assistant a cleanup question, Scrub sends
+metadata only — app names, bundle identifiers, paths, categories, sizes, and match
+confidence. File contents are never sent, and the assistant cannot delete anything.
+
 ## Extra Features
 
 - Search installed apps.
@@ -126,6 +130,7 @@ stored in the macOS Keychain.
 - Optional launch at login.
 - Optional automatic updates.
 - "What's New" screen after updates.
+- Optional ChatGPT/Codex assistant for read-only cleanup recommendations.
 
 ## Important Notes
 

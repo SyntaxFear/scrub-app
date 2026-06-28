@@ -2,29 +2,29 @@ import Foundation
 
 /// One released version's user-facing highlights. Bundled with the app (works
 /// offline) and reused as the body of the "What's New" screen shown after an update.
-struct ChangelogEntry: Identifiable, Sendable {
+struct ChangelogEntry: Codable, Identifiable, Sendable {
     let version: String
+    let build: String
+    let date: String
+    let minimumMacOS: String
     let highlights: [String]
+    let sha256: String
+    let fileSize: Int64
+    let latestPath: String
+    let archivePath: String
     var id: String { version }
 }
 
 enum Changelog {
 
-    /// Newest first. Add a new entry at the top with every release; the entry whose
-    /// `version` matches the running build is what "What's New" shows after updating.
-    static let entries: [ChangelogEntry] = [
-        ChangelogEntry(
-            version: "1.1",
-            highlights: [
-                "Sign in with Apple, Google, or email to set up Scrub.",
-                "Automatic updates — Scrub keeps itself current and verified.",
-                "New menu bar icon with quick actions, including Empty Trash.",
-                "Settings window: launch at login, menu bar, and updates.",
-                "Accurate sizes for sparse data like VMs, with a “listed” hint.",
-                "More complete uninstalls: an app’s own data folders are now selected by default.",
-            ]
-        ),
-    ]
+    private struct Manifest: Codable {
+        let schemaVersion: Int
+        let releases: [ChangelogEntry]
+    }
+
+    /// Newest first. `Releases.json` is the shared source for app notes and the
+    /// landing site's release metadata.
+    static let entries: [ChangelogEntry] = loadEntries()
 
     static var latest: ChangelogEntry? { entries.first }
 
@@ -32,4 +32,49 @@ enum Changelog {
     static func entry(for version: String) -> ChangelogEntry? {
         entries.first { $0.version == version } ?? latest
     }
+
+    private static func loadEntries() -> [ChangelogEntry] {
+        guard let url = Bundle.main.url(forResource: "Releases", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let manifest = try? JSONDecoder().decode(Manifest.self, from: data),
+              manifest.schemaVersion == 1,
+              !manifest.releases.isEmpty else {
+            return fallbackEntries
+        }
+        return manifest.releases
+    }
+
+    private static let fallbackEntries: [ChangelogEntry] = [
+        ChangelogEntry(
+            version: "1.1",
+            build: "1",
+            date: "2026-06-28",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Added manifest-backed release notes shared by the app and landing site.",
+                "Added a ChatGPT/Codex cleanup assistant for read-only, metadata-only recommendations.",
+                "Added an assistant drawer with app, leftover, and row-level Ask actions.",
+            ],
+            sha256: "d961de42a75a44263763f7c66516d89fe43f244f1f268c6f539cd5925d2ec1f9",
+            fileSize: 2_567_829,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.1.dmg"
+        ),
+        ChangelogEntry(
+            version: "1.0",
+            build: "1",
+            date: "2026-06-27",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Initial direct-download Scrub release for macOS.",
+                "Find installed apps with related caches, preferences, containers, launch agents, and helpers.",
+                "Scan leftovers from apps that were already removed.",
+                "Move selected user files to Trash first for reversible cleanup.",
+            ],
+            sha256: "d961de42a75a44263763f7c66516d89fe43f244f1f268c6f539cd5925d2ec1f9",
+            fileSize: 2_567_829,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.0.dmg"
+        ),
+    ]
 }

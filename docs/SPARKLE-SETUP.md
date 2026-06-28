@@ -8,7 +8,8 @@
 - EdDSA signing key generated; **public** key is in `Info.plist` as `SUPublicEDKey`
   (`U0n4/hIaleCo6/GsLES7Hm0mz2la0AcsYcDO5zZDUn4=`); `SUFeedURL` =
   `https://scrubmac.app/appcast.xml`.
-- `release.sh` already signs the DMG + writes/updates the appcast.
+- `release.sh` already signs the DMG, writes the versioned archive, updates the
+  shared release manifest, publishes `Scrub.dmg`, and writes/updates the appcast.
 
 ## You should do once (important)
 **Back up the private signing key.** It currently lives only in your login
@@ -29,6 +30,9 @@ SPARKLE_BIN="$(pwd)/build/dd-debug/SourcePackages/artifacts/sparkle/Sparkle/bin"
   TEAM_ID=CNH4KYRW44 ./scripts/release.sh
 ```
 
-It signs the DMG, drops it + `appcast.xml` into `../scrub-site/public/`, then
-deploy scrub-site to publish. The only thing that can't be verified from here is a
-real old→new update install — do that once with two signed builds.
+It signs `Scrub-<version>.dmg`, copies it to
+`../scrub-site/public/releases/`, copies the same build to
+`../scrub-site/public/Scrub.dmg`, copies `Scrub/Releases.json` into the site,
+writes `appcast.xml`, then deploy scrub-site to publish. The only thing that
+can't be verified from here is a real old→new update install — do that once with
+two signed builds.

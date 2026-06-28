@@ -4,6 +4,7 @@ import SwiftUI
 struct ScrubApp: App {
     @State private var store = AppStore()
     @State private var auth = AuthStore()
+    @State private var assistant = AssistantStore()
     @AppStorage(PreferenceKey.showMenuBarIcon) private var showMenuBarIcon = true
 
     init() {
@@ -21,6 +22,7 @@ struct ScrubApp: App {
         Window("Scrub", id: ScrubWindow.main) {
             RootView(store: store)
                 .environment(auth)
+                .environment(assistant)
                 .frame(minWidth: 820, minHeight: 520)
         }
         .windowToolbarStyle(.unified)
@@ -39,6 +41,7 @@ struct ScrubApp: App {
         Settings {
             SettingsView()
                 .environment(auth)
+                .environment(assistant)
         }
 
         MenuBarExtra("Scrub", image: "MenuBarIcon", isInserted: $showMenuBarIcon) {
