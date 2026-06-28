@@ -115,7 +115,7 @@ enum CodexAssistantService {
             throw CodexAssistantError.notChatGPTAuthenticated(status.description)
         }
 
-        return try await streamWithAppServer(
+        return try await streamWithExecJSON(
             prompt: assistantPrompt(question: question, context: context),
             runtime: runtime,
             onDelta: onDelta
@@ -153,6 +153,147 @@ enum CodexAssistantService {
         Scrub metadata JSON:
         \(context.jsonString)
         """
+    }
+
+    private static func streamWithExecJSON(prompt: String,
+                                           runtime: CodexRuntime,
+                                           timeout: TimeInterval = 120,
+                                           onDelta: @escaping @Sendable (String) async -> Void) async throws -> String {
+        let workDir = try assistantWorkingDirectory()
+        let process = Process()
+        process.executableURL = runtime.executableURL
+        process.arguments = [
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--sandbox", "read-only",
+            "--skip-git-repo-check",
+            "--ignore-rules",
+            "-C", workDir.path,
+            prompt,
+        ]
+
+        let stdin = Pipe()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        let state = ProcessState()
+        let stderrLog = LimitedLogBuffer()
+
+        try process.run()
+        stdin.fileHandleForWriting.closeFile()
+
+        let stderrTask = Task {
+            do {
+                for try await line in stderr.fileHandleForReading.bytes.lines {
+                    await stderrLog.append(line)
+                }
+            } catch {
+                await stderrLog.append(error.localizedDescription)
+            }
+        }
+
+        let timeoutWork = DispatchWorkItem {
+            state.markTimedOut()
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(Int(timeout * 1_000)), execute: timeoutWork)
+        defer {
+            timeoutWork.cancel()
+            stderrTask.cancel()
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        var finalText = ""
+        var streamedText = ""
+        var errorMessage = ""
+        var completed = false
+
+        for try await line in stdout.fileHandleForReading.bytes.lines {
+            guard let event = jsonObject(from: line),
+                  let type = event["type"] as? String else {
+                continue
+            }
+
+            switch type {
+            case "item.completed":
+                guard let item = event["item"] as? [String: Any],
+                      item["type"] as? String == "agent_message",
+                      let text = item["text"] as? String,
+                      !text.isEmpty else { continue }
+                finalText = text
+                if streamedText.isEmpty {
+                    streamedText = text
+                    await reveal(text, onDelta: onDelta)
+                }
+
+            case "item.agent_message.delta", "item.agentMessage.delta":
+                guard let delta = event["delta"] as? String, !delta.isEmpty else { continue }
+                streamedText += delta
+                await onDelta(delta)
+
+            case "error":
+                errorMessage = event["message"] as? String ?? errorMessage
+
+            case "turn.failed":
+                if let error = event["error"] as? [String: Any],
+                   let message = error["message"] as? String {
+                    errorMessage = message
+                }
+
+            case "turn.completed":
+                completed = true
+                break
+
+            default:
+                continue
+            }
+
+            if completed {
+                break
+            }
+        }
+
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
+
+        if state.didTimeOut {
+            throw CodexAssistantError.processFailed("Codex timed out. Try again with a smaller selection.")
+        }
+
+        let text = finalText.isEmpty ? streamedText : finalText
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+
+        if !errorMessage.isEmpty {
+            throw CodexAssistantError.processFailed(errorMessage)
+        }
+
+        let stderrText = await stderrLog.snapshot()
+        throw CodexAssistantError.processFailed(stderrText.isEmpty ? "Codex returned an empty response." : stderrText)
+    }
+
+    private static func reveal(_ text: String,
+                               chunkSize: Int = 28,
+                               onDelta: @escaping @Sendable (String) async -> Void) async {
+        var index = text.startIndex
+        while index < text.endIndex {
+            let next = text.index(index, offsetBy: chunkSize, limitedBy: text.endIndex) ?? text.endIndex
+            await onDelta(String(text[index..<next]))
+            index = next
+            try? await Task.sleep(nanoseconds: 15_000_000)
+        }
     }
 
     private static func streamWithAppServer(prompt: String,
