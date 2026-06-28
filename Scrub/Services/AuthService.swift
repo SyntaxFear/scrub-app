@@ -103,7 +103,7 @@ final class AuthStore: NSObject {
             .init(name: "client_id", value: AppleConfig.serviceID),
             .init(name: "redirect_uri", value: AppleConfig.redirectURI),
             .init(name: "response_type", value: "code"),
-            .init(name: "response_mode", value: "query"),
+            .init(name: "response_mode", value: "form_post"),
             .init(name: "scope", value: "name email"),
             .init(name: "state", value: state),
         ]

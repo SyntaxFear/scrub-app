@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "1.6",
+      "build": "7",
+      "date": "2026-06-28",
+      "minimumMacOS": "14.0",
+      "highlights": [
+        "Fixed Apple sign-in request mode so Apple accepts name and email scope.",
+        "Kept the scrubmac.app callback bridge for the direct-download app.",
+        "Preserved the signed, notarized drag-to-Applications installer flow."
+      ],
+      "sha256": "38257f8f4e648e5ba1cafd926586de4b520abcc8a636b8b03f5bc7e1ef1254ff",
+      "fileSize": 3593421,
+      "latestPath": "/Scrub.dmg",
+      "archivePath": "/releases/Scrub-1.6.dmg"
+    },
+    {
       "version": "1.5",
       "build": "6",
       "date": "2026-06-28",

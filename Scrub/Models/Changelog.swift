@@ -46,6 +46,21 @@ enum Changelog {
 
     private static let fallbackEntries: [ChangelogEntry] = [
         ChangelogEntry(
+            version: "1.6",
+            build: "7",
+            date: "2026-06-28",
+            minimumMacOS: "14.0",
+            highlights: [
+                "Fixed Apple sign-in request mode so Apple accepts name and email scope.",
+                "Kept the scrubmac.app callback bridge for the direct-download app.",
+                "Preserved the signed, notarized drag-to-Applications installer flow.",
+            ],
+            sha256: "",
+            fileSize: 0,
+            latestPath: "/Scrub.dmg",
+            archivePath: "/releases/Scrub-1.6.dmg"
+        ),
+        ChangelogEntry(
             version: "1.5",
             build: "6",
             date: "2026-06-28",
