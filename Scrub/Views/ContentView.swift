@@ -16,22 +16,11 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 460, ideal: 640)
         }
         .toolbar {
-            if store.showWhatsNewChip {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        store.openWhatsNew()
-                    } label: {
-                        Label("What’s New", systemImage: "sparkles")
-                    }
-                    .help("See what’s new in this version")
-                }
-            }
-
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     assistant.open()
                 } label: {
-                    Label("AI Assistant", systemImage: "sparkles")
+                    Label("AI Assistant", systemImage: "bubble.left.and.text.bubble.right")
                 }
                 .labelStyle(.iconOnly)
                 .help("AI Assistant")
@@ -76,9 +65,26 @@ struct ContentView: View {
             store.refreshFullDiskAccess()
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if !store.fullDiskAccessGranted {
-                FullDiskAccessBanner()
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            if !store.fullDiskAccessGranted || store.showWhatsNewChip {
+                VStack(spacing: 0) {
+                    if !store.fullDiskAccessGranted {
+                        FullDiskAccessBanner()
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    if store.showWhatsNewChip {
+                        HStack {
+                            Spacer()
+                            WhatsNewChip(
+                                onOpen: { store.openWhatsNew() },
+                                onDismiss: { store.dismissWhatsNewChip() }
+                            )
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    }
+                }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: store.fullDiskAccessGranted)
