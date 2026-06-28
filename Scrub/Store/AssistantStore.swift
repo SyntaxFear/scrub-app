@@ -158,7 +158,18 @@ final class AssistantStore {
             }
             replaceStreamingMessage(responseID, with: answer)
         } catch {
-            replaceStreamingMessage(responseID, with: error.localizedDescription)
+            if messages.first(where: { $0.id == responseID })?.text.isEmpty == true {
+                replaceStreamingMessage(responseID, with: "Streaming stalled. Finishing the answer…")
+                do {
+                    let answer = try await CodexAssistantService.ask(question: question, context: context, runtime: runtime)
+                    replaceStreamingMessage(responseID, with: answer)
+                } catch {
+                    replaceStreamingMessage(responseID, with: error.localizedDescription)
+                }
+            } else {
+                append("\n\n\(error.localizedDescription)", to: responseID)
+                replaceStreamingMessage(responseID, with: messages.first(where: { $0.id == responseID })?.text ?? error.localizedDescription)
+            }
         }
     }
 

@@ -157,7 +157,7 @@ enum CodexAssistantService {
 
     private static func streamWithAppServer(prompt: String,
                                             runtime: CodexRuntime,
-                                            timeout: TimeInterval = 180,
+                                            timeout: TimeInterval = 45,
                                             onDelta: @escaping @Sendable (String) async -> Void) async throws -> String {
         let workDir = try assistantWorkingDirectory()
         let process = Process()
@@ -241,6 +241,10 @@ enum CodexAssistantService {
 
             if let error = rpcErrorMessage(message["error"]) {
                 throw CodexAssistantError.processFailed(error)
+            }
+
+            if try handleServerRequest(message, to: input) {
+                continue
             }
 
             if intValue(message["id"]) == 1 {
@@ -358,6 +362,71 @@ enum CodexAssistantService {
         if let number = value as? NSNumber { return number.intValue }
         if let string = value as? String { return Int(string) }
         return nil
+    }
+
+    private static func handleServerRequest(_ message: [String: Any], to handle: FileHandle) throws -> Bool {
+        guard let method = message["method"] as? String,
+              let id = message["id"] else {
+            return false
+        }
+
+        switch method {
+        case "item/commandExecution/requestApproval":
+            try writeJSONResponse(id: id, result: ["decision": "decline"], to: handle)
+        case "item/fileChange/requestApproval":
+            try writeJSONResponse(id: id, result: ["decision": "decline"], to: handle)
+        case "item/permissions/requestApproval":
+            try writeJSONResponse(id: id, result: [
+                "permissions": [:],
+                "scope": "turn",
+                "strictAutoReview": true,
+            ], to: handle)
+        case "item/tool/requestUserInput":
+            try writeJSONResponse(id: id, result: ["answers": [:]], to: handle)
+        case "mcpServer/elicitation/request":
+            try writeJSONResponse(id: id, result: [
+                "action": "decline",
+                "content": NSNull(),
+                "_meta": NSNull(),
+            ], to: handle)
+        case "item/tool/call":
+            try writeJSONResponse(id: id, result: [
+                "contentItems": [
+                    [
+                        "type": "inputText",
+                        "text": "Scrub assistant does not allow tool calls.",
+                    ],
+                ],
+                "success": false,
+            ], to: handle)
+        case "applyPatchApproval", "execCommandApproval":
+            try writeJSONResponse(id: id, result: ["decision": "denied"], to: handle)
+        case "account/chatgptAuthTokens/refresh":
+            try writeJSONError(id: id, code: -32001, message: "Refresh ChatGPT connection in Scrub settings.", to: handle)
+        case "attestation/generate":
+            try writeJSONError(id: id, code: -32601, message: "Client attestation is not supported by Scrub.", to: handle)
+        default:
+            return false
+        }
+
+        return true
+    }
+
+    private static func writeJSONResponse(id: Any, result: [String: Any], to handle: FileHandle) throws {
+        try writeJSON([
+            "id": id,
+            "result": result,
+        ], to: handle)
+    }
+
+    private static func writeJSONError(id: Any, code: Int, message: String, to handle: FileHandle) throws {
+        try writeJSON([
+            "id": id,
+            "error": [
+                "code": code,
+                "message": message,
+            ],
+        ], to: handle)
     }
 
     private static func makeLoginCommandFile(runtime: CodexRuntime) throws -> URL {
